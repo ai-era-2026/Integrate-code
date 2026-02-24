@@ -1,7 +1,7 @@
 """
 工单系统路由蓝图
 """
-from flask import Blueprint, request, render_template, session, jsonify
+from flask import Blueprint, request, render_template, session, jsonify, redirect
 from common.response import success_response, error_response, unauthorized_response, server_error_response
 from common.unified_auth import get_current_user, authenticate_user
 from common.validators import validate_email, validate_required, validate_phone
@@ -171,6 +171,100 @@ def get_admins():
         return server_error_response(message=f'查询失败：{str(e)}')
 
 
+@case_bp.route('/api/customers/companies', methods=['GET'])
+def get_customer_companies():
+    """获取客户公司列表（用于创建工单时选择公司）"""
+    try:
+        log_request(logger, request)
+
+        # 检查权限，只有 admin 和 user 角色可以查看
+        user_role = session.get('role')
+        if user_role not in ['admin', 'user']:
+            return unauthorized_response(message='权限不足')
+
+        with db_connection('kb') as conn:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+            # 查询 customer 角色的活跃用户，按公司分组
+            select_sql = """
+                SELECT DISTINCT company_name
+                FROM `users`
+                WHERE role = 'customer' AND status = 'active'
+                  AND company_name IS NOT NULL AND company_name != ''
+                ORDER BY company_name
+            """
+            cursor.execute(select_sql)
+            companies = cursor.fetchall()
+
+        companies_list = [c['company_name'] for c in companies if c['company_name']]
+
+        return success_response(data=companies_list, message='查询成功')
+    except Exception as e:
+        log_exception(logger, "查询客户公司列表失败")
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        return server_error_response(message=f'查询失败：{str(e)}')
+
+
+@case_bp.route('/api/customers', methods=['GET'])
+def get_customers():
+    """获取客户联系人列表（可按公司筛选）"""
+    try:
+        log_request(logger, request)
+
+        # 检查权限，只有 admin 和 user 角色可以查看
+        user_role = session.get('role')
+        if user_role not in ['admin', 'user']:
+            return unauthorized_response(message='权限不足')
+
+        # 获取公司名称参数
+        company_name = request.args.get('company_name', '').strip()
+
+        with db_connection('kb') as conn:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+            # 查询 customer 角色的活跃用户
+            if company_name:
+                select_sql = """
+                    SELECT id, username, real_name, display_name, email, phone, company_name
+                    FROM `users`
+                    WHERE role = 'customer' AND status = 'active'
+                      AND company_name = %s
+                    ORDER BY real_name, username
+                """
+                cursor.execute(select_sql, (company_name,))
+            else:
+                select_sql = """
+                    SELECT id, username, real_name, display_name, email, phone, company_name
+                    FROM `users`
+                    WHERE role = 'customer' AND status = 'active'
+                    ORDER BY company_name, real_name, username
+                """
+                cursor.execute(select_sql)
+
+            customers = cursor.fetchall()
+
+        # 格式化客户数据
+        formatted_customers = []
+        for customer in customers:
+            name = customer.get('real_name') or customer.get('display_name') or customer.get('username', '')
+            formatted_customers.append({
+                'id': customer['id'],
+                'username': customer['username'],
+                'name': name,
+                'email': customer.get('email', ''),
+                'phone': customer.get('phone', ''),
+                'company_name': customer.get('company_name', '')
+            })
+
+        return success_response(data=formatted_customers, message='查询成功')
+    except Exception as e:
+        log_exception(logger, "查询客户列表失败")
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        return server_error_response(message=f'查询失败：{str(e)}')
+
+
 @case_bp.route('/api/ticket', methods=['POST'])
 def create_ticket():
     """创建工单
@@ -199,10 +293,10 @@ def create_ticket():
           properties:
             customer_name:
               type: string
-              description: 客户名称（公司名）
+              description: 客户公司名称
             customer_contact_name:
               type: string
-              description: 客户联系人姓名（当前登录用户）
+              description: 客户联系人姓名
             customer_contact_phone:
               type: string
               description: 联系电话
@@ -210,6 +304,9 @@ def create_ticket():
               type: string
               format: email
               description: 联系邮箱
+            cc_emails:
+              type: string
+              description: 抄送邮箱(多个邮箱用逗号分隔)
             product:
               type: string
               description: 涉及产品
@@ -251,6 +348,10 @@ def create_ticket():
         user_username = session.get('username', '')
         user_email = session.get('email', '')
 
+        # 检查权限：只有 admin 和 user 角色可以创建工单
+        if user_role not in ['admin', 'user']:
+            return unauthorized_response(message='只有管理员和普通用户可以创建工单')
+
         required_fields = [
             'customer_name', 'customer_contact_phone', 'customer_email',
             'product', 'issue_type', 'priority', 'title', 'content'
@@ -260,19 +361,30 @@ def create_ticket():
         for field in required_fields:
             if field not in data or not str(data[field]).strip():
                 return error_response(message=f'缺少必填字段：{field}或字段值为空')
-        
+
         customer_email = data['customer_email'].strip()
         is_valid, error_msg = validate_email(customer_email)
         if not is_valid:
             return error_response(message=error_msg)
-        
+
+        # 验证抄送邮箱（如果提供）
+        cc_emails = data.get('cc_emails', '').strip()
+        if cc_emails:
+            # 分割多个邮箱
+            cc_email_list = [e.strip() for e in cc_emails.split(',') if e.strip()]
+            # 验证每个邮箱
+            for cc_email in cc_email_list:
+                is_valid, error_msg = validate_email(cc_email)
+                if not is_valid:
+                    return error_response(message=f'抄送邮箱格式错误：{cc_email}')
+
         valid_issue_types = ['technical', 'service', 'complaint', 'other']
         valid_priorities = ['low', 'medium', 'high', 'urgent']
         if data['issue_type'].strip() not in valid_issue_types:
             return error_response(message='问题类型值不合法')
         if data['priority'].strip() not in valid_priorities:
             return error_response(message='优先级值不合法')
-        
+
         ticket_id = generate_ticket_id()
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -306,26 +418,26 @@ def create_ticket():
             cursor = conn.cursor()
             insert_sql = """
                 INSERT INTO tickets (ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                                    submit_user, product, issue_type, priority, title, content,
+                                    cc_emails, submit_user, product, issue_type, priority, title, content,
                                     status, create_time, update_time)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
-            # 客户名称（公司名）：用户填写
+            # 客户名称（公司名）：用户填写或选择的客户公司
             final_customer_name = data['customer_name'].strip()
 
-            # 客户联系人姓名：当前登录用户的真实姓名或用户名
+            # 客户联系人姓名：用户选择的联系人姓名
             final_contact_name = data.get('customer_contact_name', user_real_name or user_username).strip()
 
             # 提交用户名：当前登录用户的用户名
             submit_user = user_username or 'unknown'
 
             logger.info(f"创建工单 - submit_user: {submit_user}, final_customer_name: {final_customer_name}, final_contact_name: {final_contact_name}")
-            logger.info(f"创建工单参数 - ticket_id: {ticket_id}, customer_contact_phone: {data.get('customer_contact_phone')}, customer_email: {customer_email}")
+            logger.info(f"创建工单参数 - ticket_id: {ticket_id}, customer_contact_phone: {data.get('customer_contact_phone')}, customer_email: {customer_email}, cc_emails: {cc_emails}")
 
             cursor.execute(insert_sql, (
                 ticket_id, final_customer_name, final_contact_name,
-                data['customer_contact_phone'].strip(), customer_email, submit_user,
+                data['customer_contact_phone'].strip(), customer_email, cc_emails if cc_emails else None, submit_user,
                 data['product'].strip(), data['issue_type'].strip(),
                 data['priority'].strip(), data['title'].strip(), data['content'].strip(),
                 'pending', now, now
@@ -345,7 +457,7 @@ def create_ticket():
                     ))
 
             conn.commit()
-        
+
         logger.info(f"工单创建成功: {ticket_id}")
         return success_response(data={'ticket_id': ticket_id}, message='工单创建成功')
     except Exception as e:
@@ -414,7 +526,7 @@ def get_tickets():
                 if status:
                     select_sql = """
                         SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               product, issue_type, priority, title, status, create_time
+                               cc_emails, product, issue_type, priority, title, status, create_time
                         FROM tickets WHERE submit_user = %s AND status = %s ORDER BY create_time DESC
                     """
                     params = (user_username, status)
@@ -423,32 +535,43 @@ def get_tickets():
                 else:
                     select_sql = """
                         SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               product, issue_type, priority, title, status, create_time
+                               cc_emails, product, issue_type, priority, title, status, create_time
                         FROM tickets WHERE submit_user = %s ORDER BY create_time DESC
                     """
                     params = (user_username,)
                     logger.info(f"SQL: {select_sql}, params: {params}")
                     cursor.execute(select_sql, params)
-            # admin/user 角色: 可以查看所有工单，支持 my_only 筛选
+            # admin/user 角色: 可以查看所有工单，支持 my_only 筛选自己创建的工单
             elif user_role in ['admin', 'user']:
                 if status and my_only:
+                    # 筛选状态和自己创建的工单
                     select_sql = """
                         SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE status = %s ORDER BY create_time DESC LIMIT 100
+                               cc_emails, product, issue_type, priority, title, status, create_time
+                        FROM tickets WHERE status = %s AND submit_user = %s ORDER BY create_time DESC LIMIT 100
                     """
-                    cursor.execute(select_sql, (status,))
-                elif status:
+                    cursor.execute(select_sql, (status, user_username))
+                elif my_only:
+                    # 筛选自己创建的工单
                     select_sql = """
                         SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               product, issue_type, priority, title, status, create_time
+                               cc_emails, product, issue_type, priority, title, status, create_time
+                        FROM tickets WHERE submit_user = %s ORDER BY create_time DESC LIMIT 100
+                    """
+                    cursor.execute(select_sql, (user_username,))
+                elif status:
+                    # 筛选状态的工单
+                    select_sql = """
+                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
+                               cc_emails, product, issue_type, priority, title, status, create_time
                         FROM tickets WHERE status = %s ORDER BY create_time DESC LIMIT 100
                     """
                     cursor.execute(select_sql, (status,))
                 else:
+                    # 查看所有工单
                     select_sql = """
                         SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               product, issue_type, priority, title, status, create_time
+                               cc_emails, product, issue_type, priority, title, status, create_time
                         FROM tickets ORDER BY create_time DESC LIMIT 100
                     """
                     cursor.execute(select_sql)
@@ -480,16 +603,16 @@ def get_ticket_detail(ticket_id):
         log_request(logger, request)
         user_role = session.get('role')
         user_username = session.get('username')
-        
+
         if not user_role:
             return unauthorized_response(message='未登录')
-        
+
         with db_connection('case') as conn:
             cursor = conn.cursor(pymysql.cursors.DictCursor)
             select_sql = "SELECT * FROM tickets WHERE ticket_id = %s"
             cursor.execute(select_sql, (ticket_id,))
             ticket = cursor.fetchone()
-        
+
         if not ticket:
             from common.response import not_found_response
             return not_found_response(message='工单不存在')
@@ -498,11 +621,11 @@ def get_ticket_detail(ticket_id):
         if user_role == 'customer' and ticket.get('submit_user') != user_username:
             from common.response import forbidden_response
             return forbidden_response(message='无权访问此工单')
-        
+
         ticket['create_time'] = ticket['create_time'].strftime('%Y-%m-%d %H:%M:%S')
         ticket['update_time'] = ticket['update_time'].strftime('%Y-%m-%d %H:%M:%S')
         ticket['current_user_role'] = user_role
-        
+
         return success_response(data=ticket, message='查询成功')
     except Exception as e:
         log_exception(logger, "查询工单详情失败")
@@ -580,7 +703,35 @@ def get_messages(ticket_id):
 @case_bp.route('/submit', methods=['GET'])
 def submit_ticket_page():
     """工单提交页面"""
-    return render_template('case/submit_ticket.html')
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect('/case/')
+    
+    # 获取完整用户信息
+    with db_connection('kb') as conn:
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT id, username, real_name, display_name, role, email, phone, company_name
+            FROM `users`
+            WHERE id = %s
+        """, (user_id,))
+        user = cursor.fetchone()
+    
+    if not user:
+        return redirect('/case/')
+    
+    user_data = {
+        'id': user['id'],
+        'username': user['username'],
+        'real_name': user.get('real_name') or user.get('display_name', ''),
+        'display_name': user.get('display_name', ''),
+        'role': user['role'],
+        'email': user.get('email', ''),
+        'phone': user.get('phone', ''),
+        'company_name': user.get('company_name', '')
+    }
+    
+    return render_template('case/submit_ticket_v2.html', current_user=user_data)
 
 
 @case_bp.route('/my-tickets', methods=['GET'])

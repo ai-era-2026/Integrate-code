@@ -1,0 +1,319 @@
+{% extends "case/base.html" %}
+
+{% block title %}提交工单 - 云户科技工单系统{% endblock %}
+
+{% block content %}
+<div class="container">
+  <!-- 隐藏的用户信息供 JavaScript 使用 -->
+  <script type="application/json" id="currentUser">
+    {
+      "id": {{ current_user.id }},
+      "username": "{{ current_user.username }}",
+      "real_name": "{{ current_user.real_name }}",
+      "display_name": "{{ current_user.display_name }}",
+      "role": "{{ current_user.role }}",
+      "email": "{{ current_user.email }}",
+      "phone": "{{ current_user.phone }}",
+      "company_name": "{{ current_user.company_name }}"
+    }
+  </script>
+  <div class="page-header">
+    <h1><i class="fa fa-ticket"></i> 提交工单</h1>
+    <p class="subtitle">请填写以下信息，我们将尽快为您处理</p>
+  </div>
+
+  <div class="form-container">
+    <form id="ticketForm" class="ticket-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+      <!-- 客户信息 -->
+      <div class="form-section">
+        <h3><i class="fa fa-user"></i> 客户信息</h3>
+        <div class="form-group">
+          <label for="customerName">
+            <i class="fa fa-building"></i> 客户公司 <span class="required">*</span>
+          </label>
+          <select id="customerName" name="customer_name" required>
+            <option value="">请选择客户公司</option>
+          </select>
+          <small class="form-text text-muted">请选择客户公司或机构名称</small>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="customerContactName">
+              <i class="fa fa-user-circle"></i> 客户联系人 <span class="required">*</span>
+            </label>
+            <select id="customerContactName" name="customer_contact_name" required>
+              <option value="">请先选择客户公司</option>
+            </select>
+            <small class="form-text text-muted">选择客户公司的联系人</small>
+          </div>
+          <div class="form-group">
+            <label for="customerContactPhone">
+              <i class="fa fa-phone"></i> 联系电话 <span class="required">*</span>
+            </label>
+            <input type="tel" id="customerContactPhone" name="customer_contact_phone" required
+                   placeholder="请输入联系电话" readonly>
+            <small class="form-text text-muted">根据选择的联系人自动填充</small>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="customerEmail">
+              <i class="fa fa-envelope"></i> 联系邮箱 <span class="required">*</span>
+            </label>
+            <input type="email" id="customerEmail" name="customer_email" required
+                   placeholder="请输入联系邮箱" readonly>
+            <small class="form-text text-muted">根据选择的联系人自动填充</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="ccEmails">
+            <i class="fa fa-envelope-open"></i> 抄送邮箱（可选）
+          </label>
+          <input type="text" id="ccEmails" name="cc_emails"
+                 placeholder="多个邮箱用逗号分隔">
+          <small class="form-text text-muted">
+            <i class="fa fa-info-circle"></i>
+            多个邮箱用逗号分隔，例如：a@example.com,b@example.com
+          </small>
+        </div>
+      </div>
+
+      <!-- 工单信息 -->
+      <div class="form-section">
+        <h3><i class="fa fa-file-alt"></i> 工单信息</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="ticketType">
+              <i class="fa fa-list"></i> 工单类型 <span class="required">*</span>
+            </label>
+            <select id="ticketType" name="issue_type" required>
+              <option value="">请选择工单类型</option>
+              <option value="technical">技术支持</option>
+              <option value="service">产品咨询</option>
+              <option value="complaint">售后投诉</option>
+              <option value="other">其他问题</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="priority">
+              <i class="fa fa-flag"></i> 优先级 <span class="required">*</span>
+            </label>
+            <select id="priority" name="priority" required>
+              <option value="">请选择优先级</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="urgent">紧急</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="product">
+            <i class="fa fa-box"></i> 涉及产品
+          </label>
+          <input type="text" id="product" name="product"
+                 placeholder="请输入涉及的产品或服务（可选）">
+        </div>
+        <div class="form-group">
+          <label for="title">
+            <i class="fa fa-heading"></i> 工单标题 <span class="required">*</span>
+          </label>
+          <input type="text" id="title" name="title" required
+                 placeholder="请简要描述问题">
+        </div>
+        <div class="form-group">
+          <label for="description">
+            <i class="fa fa-align-left"></i> 详细描述 <span class="required">*</span>
+          </label>
+          <textarea id="description" name="content" rows="6" required
+                    placeholder="请详细描述您遇到的问题或需求，包括具体表现、影响范围等"></textarea>
+          <small class="form-text text-muted">
+            <i class="fa fa-lightbulb"></i>
+            建议提供以下信息以便更快定位和解决问题：<br>
+            1. 问题发生的具体时间<br>
+            2. 问题出现的环境和条件<br>
+            3. 已尝试的解决方法<br>
+            4. 问题的实际影响
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="files">
+            <i class="fa fa-paperclip"></i> 附件上传（可选）
+          </label>
+          <input type="file" id="files" name="files" multiple accept=".txt,.pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx">
+          <small class="form-text text-muted">
+            支持的文件类型：txt, pdf, png, jpg, jpeg, gif, doc, docx, xls, xlsx
+          </small>
+        </div>
+      </div>
+
+      <!-- 提交按钮 -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-lg">
+          <i class="fa fa-paper-plane"></i> 提交工单
+        </button>
+        <a href="/case/my-tickets" class="btn btn-secondary btn-lg">
+          <i class="fa fa-times"></i> 取消
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // 获取当前用户信息
+  const currentUser = getCurrentUser();
+
+  // 1. 加载客户公司列表
+  loadCustomerCompanies();
+
+  // 2. 客户公司变化时加载联系人
+  document.getElementById('customerName').addEventListener('change', function() {
+    const companyName = this.value;
+    if (!companyName) return;
+
+    // 清空联系人选择
+    const contactSelect = document.getElementById('customerContactName');
+    contactSelect.innerHTML = '<option value="">请选择联系人</option>';
+
+    // 清空自动填充的字段
+    document.getElementById('customerContactPhone').value = '';
+    document.getElementById('customerEmail').value = '';
+
+    // 加载联系人列表
+    fetch(`/case/api/customers?company_name=${encodeURIComponent(companyName)}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          data.data.forEach(customer => {
+            contactSelect.innerHTML += `<option value="${customer.username}"
+                                             data-name="${customer.name}"
+                                             data-phone="${customer.phone || ''}"
+                                             data-email="${customer.email}">${customer.name}</option>`;
+          });
+
+          // 如果是客户角色，自动选择当前登录用户
+          if (currentUser && currentUser.role === 'customer') {
+            const currentUserOption = Array.from(contactSelect.options).find(
+              opt => opt.value === currentUser.username
+            );
+            if (currentUserOption) {
+              contactSelect.value = currentUser.username;
+              // 触发 change 事件以自动填充信息
+              contactSelect.dispatchEvent(new Event('change'));
+            }
+          }
+        }
+      })
+      .catch(error => {
+        console.error('加载联系人失败:', error);
+        alert('加载联系人失败，请稍后重试');
+      });
+  });
+
+  // 3. 客户联系人变化时自动填充信息
+  document.getElementById('customerContactName').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    if (!selectedOption.value) return;
+
+    // 自动填充电话、邮箱
+    const phone = selectedOption.getAttribute('data-phone');
+    const email = selectedOption.getAttribute('data-email');
+
+    document.getElementById('customerContactPhone').value = phone;
+    document.getElementById('customerEmail').value = email;
+  });
+
+  // 4. 表单提交
+  document.getElementById('ticketForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    // 获取表单数据
+    const formData = new FormData(this);
+
+    // 添加抄送邮箱
+    const ccEmails = document.getElementById('ccEmails').value.trim();
+    if (ccEmails) {
+      formData.append('cc_emails', ccEmails);
+    }
+
+    // 提交工单
+    fetch('/case/api/ticket', {
+      method: 'POST',
+      body: formData
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          alert('工单创建成功！');
+          window.location.href = '/case/my-tickets';
+        } else {
+          alert('工单创建失败：' + data.message);
+        }
+      })
+      .catch(error => {
+        console.error('提交工单失败:', error);
+        alert('提交工单失败，请稍后重试');
+      });
+  });
+});
+
+// 加载客户公司列表
+function loadCustomerCompanies() {
+  fetch('/case/api/customers/companies')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const select = document.getElementById('customerName');
+        select.innerHTML = '<option value="">请选择客户公司</option>';
+        data.data.forEach(company => {
+          select.innerHTML += `<option value="${company}">${company}</option>`;
+        });
+
+        // 如果是客户角色，自动选择当前用户的公司
+        const currentUser = getCurrentUser();
+        if (currentUser && currentUser.role === 'customer' && currentUser.company_name) {
+          const companyOption = Array.from(select.options).find(
+            opt => opt.value === currentUser.company_name
+          );
+          if (companyOption) {
+            select.value = currentUser.company_name;
+            // 触发 change 事件以加载联系人列表
+            select.dispatchEvent(new Event('change'));
+          }
+        }
+      }
+    })
+    .catch(error => {
+      console.error('加载客户公司失败:', error);
+      alert('加载客户公司失败，请刷新页面重试');
+    });
+}
+
+// 从 session 获取当前用户信息
+function getCurrentUser() {
+  try {
+    // 从 cookie 中获取 session
+    const sessionCookie = document.cookie.split('; ').find(
+      row => row.startsWith('session=')
+    );
+    if (!sessionCookie) return null;
+
+    // 尝试从模板中注入的变量获取
+    const userElement = document.getElementById('currentUser');
+    if (userElement) {
+      return JSON.parse(userElement.textContent);
+    }
+    return null;
+  } catch (e) {
+    console.error('获取用户信息失败:', e);
+    return null;
+  }
+}
+</script>
+
+{% endblock %}

@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS `users` (
     `display_name` VARCHAR(100) COMMENT '显示名称',
     `real_name` VARCHAR(100) COMMENT '真实姓名',
     `email` VARCHAR(100) COMMENT '邮箱',
+    `company_name` VARCHAR(200) DEFAULT NULL COMMENT '公司名称(客户角色必填)',
+    `phone` VARCHAR(20) DEFAULT NULL COMMENT '联系电话',
     `role` VARCHAR(20) DEFAULT 'user' COMMENT '角色：admin-管理员, user-普通用户, customer-客户',
     `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态：active-活跃, inactive-未激活, locked-锁定',
     `last_login` TIMESTAMP NULL COMMENT '最后登录时间',
@@ -72,7 +74,8 @@ CREATE TABLE IF NOT EXISTS `users` (
     INDEX idx_username (`username`),
     INDEX idx_status (`status`),
     INDEX idx_role (`role`),
-    INDEX idx_system (`system`)
+    INDEX idx_system (`system`),
+    INDEX idx_company_name (`company_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='统一用户表';
 
 -- 知识库登录日志表
@@ -121,10 +124,11 @@ USE `casedb`;
 CREATE TABLE IF NOT EXISTS `tickets` (
     `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '自增ID',
     `ticket_id` VARCHAR(32) NOT NULL UNIQUE COMMENT '工单唯一标识ID',
-    `customer_name` VARCHAR(100) NOT NULL COMMENT '客户名称',
+    `customer_name` VARCHAR(100) NOT NULL COMMENT '客户公司名称',
     `customer_contact_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '客户联系人姓名(当前登录用户)',
     `customer_contact` VARCHAR(50) NOT NULL COMMENT '客户联系方式',
     `customer_email` VARCHAR(100) NOT NULL COMMENT '客户邮箱',
+    `cc_emails` TEXT NULL COMMENT '抄送邮箱(多个邮箱用逗号分隔)',
     `submit_user` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '提交工单的用户名(来自统一用户表)',
     `product` VARCHAR(50) NOT NULL COMMENT '涉及产品',
     `issue_type` VARCHAR(20) NOT NULL COMMENT '问题类型',
