@@ -65,9 +65,9 @@ def login():
             session['role'] = user_info['role']
             session['login_time'] = datetime.now().isoformat()
             session.permanent = False
-            
-            logger.info(f"用户 {username} 登录成功")
-            
+
+            logger.info(f"用户 {username} 登录成功, 设置session: {list(session.keys())}")
+
             next_url = request.form.get('next')
             if next_url:
                 return redirect(next_url)
@@ -91,7 +91,12 @@ def logout():
 @kb_bp.route('/auth/check-login')
 def check_login():
     """检查登录状态"""
+    # 登录状态检查端点豁免限流（前端频繁调用）
+    from app import limiter
+    limiter.exempt(check_login)
+
     user = get_current_user()
+    logger.info(f"[知识库] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
     if user:
         from common.response import success_response
         return success_response(data={'user': user}, message='已登录')
@@ -345,41 +350,11 @@ def proxy_trilium_attachment(attachment_path):
         return Response(f'Failed to proxy attachment: {str(e)}', status=500)
 
 
-@kb_bp.route('/auth/users')
-@login_required(roles=['admin'])
-def user_management():
-    """用户管理页面"""
-    try:
-        from common.database_context import db_connection
-        from common.logger import log_exception
-
-        with db_connection('kb') as conn:
-            cursor = conn.cursor()
-
-            # 获取用户列表
-            cursor.execute("SELECT * FROM `users` ORDER BY created_at DESC")
-            users = cursor.fetchall()
-
-            # 获取最近登录日志
-            cursor.execute("""
-                SELECT l.*, u.username, u.display_name
-                FROM mgmt_login_logs l
-                LEFT JOIN `users` u ON l.user_id = u.id
-                ORDER BY l.login_time DESC
-                LIMIT 20
-            """)
-            login_logs = cursor.fetchall()
-
-            return render_template('kb/user_management.html', users=users,
-                                 login_logs=login_logs,
-                                 total_count=len(users) if users else 0)
-    except Exception as e:
-        from common.logger import log_exception
-        log_exception(logger, "加载知识库用户管理页面失败")
-        return render_template('kb/user_management.html', users=[],
-                             login_logs=[],
-                             error=str(e),
-                             total_count=0)
+@kb_bp.route('/test-check-login')
+@login_required()
+def test_check_login_page():
+    """测试 check-login API 页面"""
+    return render_template('test_check_login.html')
 
 
 

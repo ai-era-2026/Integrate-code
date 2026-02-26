@@ -35,11 +35,7 @@ class UserService:
             if 'display_name' in data:
                 update_fields.append('display_name = %s')
                 update_values.append(data['display_name'])
-            
-            if 'real_name' in data:
-                update_fields.append('real_name = %s')
-                update_values.append(data['real_name'])
-            
+
             if 'role' in data:
                 update_fields.append('role = %s')
                 update_values.append(data['role'])
@@ -55,6 +51,10 @@ class UserService:
             if 'phone' in data:
                 update_fields.append('phone = %s')
                 update_values.append(data['phone'])
+            
+            if 'company_name' in data:
+                update_fields.append('company_name = %s')
+                update_values.append(data['company_name'])
             
             # 处理密码更新
             if 'password' in data and data['password']:
@@ -97,13 +97,13 @@ class UserService:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, username, display_name, real_name, email, phone, role, status, created_at, last_login FROM `users` WHERE id = %s",
+                "SELECT id, username, display_name, email, phone, role, status, created_at, last_login, company_name FROM `users` WHERE id = %s",
                 (user_id,)
             )
             user = cursor.fetchone()
-            
+
             if user:
-                columns = ['id', 'username', 'display_name', 'real_name', 'email', 'phone', 'role', 'status', 'created_at', 'last_login']
+                columns = ['id', 'username', 'display_name', 'email', 'phone', 'role', 'status', 'created_at', 'last_login', 'company_name']
                 return dict(zip(columns, user))
             return None
             
@@ -156,7 +156,7 @@ class UserService:
             
             # 查询列表
             list_sql = f"""
-            SELECT id, username, display_name, real_name, email, phone, role, status, created_at, last_login
+            SELECT id, username, display_name, email, phone, role, status, created_at, last_login, company_name
             FROM `users`
             {where_clause}
             ORDER BY created_at DESC
@@ -164,8 +164,8 @@ class UserService:
             """
             cursor.execute(list_sql, params + [limit, offset])
             rows = cursor.fetchall()
-            
-            columns = ['id', 'username', 'display_name', 'real_name', 'email', 'phone', 'role', 'status', 'created_at', 'last_login']
+
+            columns = ['id', 'username', 'display_name', 'email', 'phone', 'role', 'status', 'created_at', 'last_login', 'company_name']
             users = [dict(zip(columns, row)) for row in rows]
             
             return users, total

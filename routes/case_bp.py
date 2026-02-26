@@ -86,17 +86,18 @@ def login():
             return unauthorized_response(message=result)
         
         user_info = result
-        
+
         session['user_id'] = user_info['id']
         session['username'] = user_info['username']
-        session['real_name'] = user_info.get('real_name') or user_info.get('display_name', '')
         session['role'] = user_info['role']
         session['display_name'] = user_info.get('display_name', '')
-        
+        session['login_time'] = datetime.now().isoformat()
+        session.permanent = False
+
         return success_response(data={
             'user_id': user_info['id'],
             'username': user_info['username'],
-            'real_name': user_info.get('real_name') or user_info.get('display_name', ''),
+            'display_name': user_info.get('display_name', ''),
             'role': user_info['role']
         }, message='登录成功')
     except Exception as e:
@@ -111,6 +112,74 @@ def logout():
     return success_response(message='登出成功')
 
 
+@case_bp.route('/auth/check-login')
+def check_login():
+    """检查登录状态
+
+    用于前端AJAX检查用户是否登录
+    ---
+    tags:
+      - 工单-认证
+    responses:
+      200:
+        description: 登录状态检查结果
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              description: 是否登录
+            message:
+              type: string
+              description: 响应消息
+            data:
+              type: object
+              properties:
+                user:
+                  type: object
+                  description: 用户信息
+    """
+    # 登录状态检查端点豁免限流（前端频繁调用）
+    from app import limiter
+    limiter.exempt(check_login)
+
+    user = get_current_user()
+    logger.info(f"[工单系统] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
+    if user:
+        return success_response(data={'user': user}, message='已登录')
+    return unauthorized_response(message='未登录')
+    """检查登录状态
+
+    用于前端AJAX检查用户是否登录
+    ---
+    tags:
+      - 工单-认证
+    responses:
+      200:
+        description: 登录状态检查结果
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              description: 是否登录
+            message:
+              type: string
+              description: 响应消息
+            data:
+              type: object
+              properties:
+                user:
+                  type: object
+                  description: 用户信息
+    """
+    user = get_current_user()
+    logger.info(f"[工单系统] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
+    if user:
+        return success_response(data={'user': user}, message='已登录')
+    return unauthorized_response(message='未登录')
+
+
 @case_bp.route('/api/user/info', methods=['GET'])
 def get_user_info():
     """获取用户信息"""
@@ -118,12 +187,12 @@ def get_user_info():
     if not user_id:
         return unauthorized_response(message='未登录')
 
-    return success_response(data={
-        'user_id': session.get('user_id'),
-        'username': session.get('username'),
-        'real_name': session.get('real_name'),
-        'role': session.get('role'),
-        'email': session.get('email')
+        return success_response(data={
+            'user_id': session.get('user_id'),
+            'username': session.get('username'),
+            'display_name': session.get('display_name', ''),
+            'role': session.get('role'),
+            'email': session.get('email')
     })
 
 
@@ -143,7 +212,7 @@ def get_admins():
 
             # 查询 admin 和 user 角色的活跃用户
             select_sql = """
-                SELECT id, username, real_name, display_name, role, email
+                SELECT id, username, display_name, role, email
                 FROM `users`
                 WHERE role IN ('admin', 'user') AND status = 'active'
                 ORDER BY role, username
@@ -151,10 +220,10 @@ def get_admins():
             cursor.execute(select_sql)
             users = cursor.fetchall()
 
-        # 格式化用户数据，优先使用 real_name
+        # 格式化用户数据，使用 display_name
         formatted_users = []
         for user in users:
-            name = user.get('real_name') or user.get('display_name') or user.get('username', '')
+            name = user.get('display_name') or user.get('username', '')
             formatted_users.append({
                 'id': user['id'],
                 'username': user['username'],
@@ -226,19 +295,19 @@ def get_customers():
             # 查询 customer 角色的活跃用户
             if company_name:
                 select_sql = """
-                    SELECT id, username, real_name, display_name, email, phone, company_name
+                    SELECT id, username, display_name, email, phone, company_name
                     FROM `users`
                     WHERE role = 'customer' AND status = 'active'
                       AND company_name = %s
-                    ORDER BY real_name, username
+                    ORDER BY display_name, username
                 """
                 cursor.execute(select_sql, (company_name,))
             else:
                 select_sql = """
-                    SELECT id, username, real_name, display_name, email, phone, company_name
+                    SELECT id, username, display_name, email, phone, company_name
                     FROM `users`
                     WHERE role = 'customer' AND status = 'active'
-                    ORDER BY company_name, real_name, username
+                    ORDER BY company_name, display_name, username
                 """
                 cursor.execute(select_sql)
 
@@ -247,7 +316,7 @@ def get_customers():
         # 格式化客户数据
         formatted_customers = []
         for customer in customers:
-            name = customer.get('real_name') or customer.get('display_name') or customer.get('username', '')
+            name = customer.get('display_name') or customer.get('username', '')
             formatted_customers.append({
                 'id': customer['id'],
                 'username': customer['username'],
@@ -344,7 +413,7 @@ def create_ticket():
             data = request.form.to_dict()
 
         user_role = session.get('role')
-        user_real_name = session.get('real_name', '')
+        user_display_name = session.get('display_name', '')
         user_username = session.get('username', '')
         user_email = session.get('email', '')
 
@@ -420,14 +489,14 @@ def create_ticket():
                 INSERT INTO tickets (ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
                                     cc_emails, submit_user, product, issue_type, priority, title, content,
                                     status, create_time, update_time)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
             # 客户名称（公司名）：用户填写或选择的客户公司
             final_customer_name = data['customer_name'].strip()
 
             # 客户联系人姓名：用户选择的联系人姓名
-            final_contact_name = data.get('customer_contact_name', user_real_name or user_username).strip()
+            final_contact_name = data.get('customer_contact_name', user_display_name or user_username).strip()
 
             # 提交用户名：当前登录用户的用户名
             submit_user = user_username or 'unknown'
@@ -459,6 +528,48 @@ def create_ticket():
             conn.commit()
 
         logger.info(f"工单创建成功: {ticket_id}")
+
+        # 发送邮件通知到企业微信邮箱
+        try:
+            from services.email_service import EmailService
+            email_service = EmailService()
+
+            # 准备附件信息
+            attachments = None
+            if uploaded_files:
+                attachments = []
+                for filename in uploaded_files:
+                    file_path = os.path.join('static', 'uploads', 'case', filename)
+                    if os.path.exists(file_path):
+                        file_size = os.path.getsize(file_path)
+                        size_str = f"{file_size / 1024:.1f} KB" if file_size < 1024 * 1024 else f"{file_size / 1024 / 1024:.1f} MB"
+                        attachments.append({
+                            'filename': filename,
+                            'url': f'/static/uploads/case/{filename}',
+                            'size': size_str
+                        })
+
+            success, message = email_service.send_ticket_created_notification(
+                ticket_id=ticket_id,
+                title=data['title'].strip(),
+                customer_name=final_customer_name,
+                contact_name=final_contact_name,
+                priority=data['priority'].strip(),
+                issue_type=data['issue_type'].strip(),
+                content=data['content'].strip(),
+                attachments=attachments
+            )
+
+            if not success:
+                logger.warning(f"工单邮件发送失败: {message}")
+                # 邮件发送失败不阻止工单创建，只记录警告
+
+        except ImportError:
+            logger.warning("邮件服务模块未找到，跳过邮件发送")
+        except Exception as e:
+            logger.error(f"工单邮件发送异常: {str(e)}")
+            # 邮件发送异常不阻止工单创建
+
         return success_response(data={'ticket_id': ticket_id}, message='工单创建成功')
     except Exception as e:
         log_exception(logger, "工单创建失败")
@@ -502,7 +613,7 @@ def debug_tickets():
 
 @case_bp.route('/api/tickets', methods=['GET'])
 def get_tickets():
-    """获取工单列表"""
+    """获取工单列表（支持分页）"""
     try:
         log_request(logger, request)
         user_role = session.get('role')
@@ -515,80 +626,95 @@ def get_tickets():
         if not user_role:
             return unauthorized_response(message='未登录')
 
+        # 获取分页参数
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
         status = request.args.get('status', '').strip()
+        priority = request.args.get('priority', '').strip()
+        search = request.args.get('search', '').strip()
         my_only = request.args.get('my_only', 'false').lower() == 'true'
+
+        logger.info(f"查询参数 - page: {page}, page_size: {page_size}, status: {status}, priority: {priority}, search: {search}, my_only: {my_only}")
 
         with db_connection('case') as conn:
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-            # customer 角色: 只能看到自己创建的工单（通过 submit_user 判断）
+            # 构建基础 WHERE 条件
+            where_conditions = []
+            params = []
+
+            # 根据角色添加基础条件
             if user_role == 'customer':
-                if status:
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE submit_user = %s AND status = %s ORDER BY create_time DESC
-                    """
-                    params = (user_username, status)
-                    logger.info(f"SQL: {select_sql}, params: {params}")
-                    cursor.execute(select_sql, params)
-                else:
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE submit_user = %s ORDER BY create_time DESC
-                    """
-                    params = (user_username,)
-                    logger.info(f"SQL: {select_sql}, params: {params}")
-                    cursor.execute(select_sql, params)
-            # admin/user 角色: 可以查看所有工单，支持 my_only 筛选自己创建的工单
+                # 客户：显示联系人为该用户的所有工单
+                # 优先匹配 customer_contact（联系人的用户名），其次匹配 email
+                where_conditions.append("(customer_contact = %s OR customer_email = %s)")
+                params.extend([user_username, user_username])
             elif user_role in ['admin', 'user']:
-                if status and my_only:
-                    # 筛选状态和自己创建的工单
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE status = %s AND submit_user = %s ORDER BY create_time DESC LIMIT 100
-                    """
-                    cursor.execute(select_sql, (status, user_username))
-                elif my_only:
-                    # 筛选自己创建的工单
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE submit_user = %s ORDER BY create_time DESC LIMIT 100
-                    """
-                    cursor.execute(select_sql, (user_username,))
-                elif status:
-                    # 筛选状态的工单
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets WHERE status = %s ORDER BY create_time DESC LIMIT 100
-                    """
-                    cursor.execute(select_sql, (status,))
-                else:
-                    # 查看所有工单
-                    select_sql = """
-                        SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
-                               cc_emails, product, issue_type, priority, title, status, create_time
-                        FROM tickets ORDER BY create_time DESC LIMIT 100
-                    """
-                    cursor.execute(select_sql)
+                # 管理员/普通用户：显示所有工单（无需添加过滤条件）
+                pass
             else:
-                tickets = []
-                logger.warning(f"未知角色: {user_role}")
-                return success_response(data=tickets, message='查询成功')
+                return unauthorized_response(message='角色权限不足')
 
+            # 添加状态过滤
+            if status:
+                where_conditions.append("status = %s")
+                params.append(status)
+
+            # 添加优先级过滤
+            if priority:
+                where_conditions.append("priority = %s")
+                params.append(priority)
+
+            # 添加搜索（支持工单编号和标题）
+            if search:
+                where_conditions.append("(ticket_id LIKE %s OR title LIKE %s)")
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            # 构建 SQL
+            base_sql = """
+                SELECT ticket_id, customer_name, customer_contact_name, customer_contact, customer_email,
+                       cc_emails, product, issue_type, priority, title, status, create_time
+                FROM tickets
+            """
+
+            if where_conditions:
+                base_sql += " WHERE " + " AND ".join(where_conditions)
+
+            # 先查询总数
+            count_sql = "SELECT COUNT(*) as total FROM tickets"
+            if where_conditions:
+                count_sql += " WHERE " + " AND ".join(where_conditions)
+
+            cursor.execute(count_sql, tuple(params))
+            total_result = cursor.fetchone()
+            total = total_result['total'] if total_result else 0
+
+            # 添加排序和分页
+            base_sql += " ORDER BY create_time DESC"
+
+            # 添加分页
+            offset = (page - 1) * page_size
+            base_sql += f" LIMIT {page_size} OFFSET {offset}"
+
+            logger.info(f"SQL: {base_sql}, params: {params}")
+            cursor.execute(base_sql, tuple(params))
             tickets = cursor.fetchall()
-            logger.info(f"查询到工单数量: {len(tickets)}")
-            if tickets:
-                logger.info(f"第一个工单: {tickets[0]}")
 
-        for ticket in tickets:
-            ticket['create_time'] = ticket['create_time'].strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"查询到工单数量: {len(tickets)}, 总数: {total}")
 
-        return success_response(data=tickets, message='查询成功')
+            # 格式化工单数据
+            for ticket in tickets:
+                ticket['created_at'] = ticket['create_time'].strftime('%Y-%m-%d %H:%M:%S')
+                if ticket.get('update_time'):
+                    ticket['updated_at'] = ticket['update_time'].strftime('%Y-%m-%d %H:%M:%S')
+
+        return success_response(data={
+            'tickets': tickets,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total + page_size - 1) // page_size
+        }, message='查询成功')
     except Exception as e:
         log_exception(logger, "查询工单列表失败")
         import traceback
@@ -638,25 +764,26 @@ def update_ticket_status(ticket_id):
     try:
         log_request(logger, request)
         user_role = session.get('role')
-        if not user_role or user_role != 'admin':
+        # admin 和 user 都可以更新状态
+        if not user_role or user_role not in ['admin', 'user']:
             from common.response import forbidden_response
             return forbidden_response(message='无权执行此操作')
-        
+
         data = request.get_json()
         new_status = data.get('status', '').strip()
-        
+
         valid_statuses = ['pending', 'processing', 'completed', 'closed']
         if new_status not in valid_statuses:
             return error_response(message='工单状态值不合法')
-        
+
         with db_connection('case') as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("SELECT id FROM tickets WHERE ticket_id = %s", (ticket_id,))
             if not cursor.fetchone():
                 from common.response import not_found_response
                 return not_found_response(message='工单不存在')
-            
+
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             update_sql = "UPDATE tickets SET status = %s, update_time = %s WHERE ticket_id = %s"
             cursor.execute(update_sql, (new_status, now, ticket_id))
@@ -669,7 +796,7 @@ def update_ticket_status(ticket_id):
         except ImportError:
             pass
 
-        logger.info(f"工单状态更新: {ticket_id} -> {new_status}")
+        logger.info(f"工单状态更新: {ticket_id} -> {new_status} by {user_role}")
         return success_response(message='工单状态更新成功')
     except Exception as e:
         log_exception(logger, "更新工单状态失败")
@@ -704,52 +831,102 @@ def get_messages(ticket_id):
 def submit_ticket_page():
     """工单提交页面"""
     user_id = session.get('user_id')
+    logger.info(f"[工单系统] 访问提交页面, session keys: {list(session.keys())}, user_id: {user_id}")
+
     if not user_id:
+        logger.warning(f"[工单系统] 用户未登录, session为空或缺少user_id")
         return redirect('/case/')
-    
+
     # 获取完整用户信息
     with db_connection('kb') as conn:
         cursor = conn.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT id, username, real_name, display_name, role, email, phone, company_name
+            SELECT id, username, display_name, role, email, phone, company_name
             FROM `users`
             WHERE id = %s
         """, (user_id,))
         user = cursor.fetchone()
-    
+
     if not user:
         return redirect('/case/')
-    
+
     user_data = {
         'id': user['id'],
         'username': user['username'],
-        'real_name': user.get('real_name') or user.get('display_name', ''),
         'display_name': user.get('display_name', ''),
         'role': user['role'],
         'email': user.get('email', ''),
         'phone': user.get('phone', ''),
         'company_name': user.get('company_name', '')
     }
-    
-    return render_template('case/submit_ticket_v2.html', current_user=user_data)
+
+    # 管理员和普通用户需要获取公司和用户列表
+    companies = []
+    company_users = {}
+
+    if user_data['role'] in ['admin', 'user']:
+        with db_connection('kb') as conn:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+            # 获取所有有公司名称的公司列表（去重）
+            cursor.execute("""
+                SELECT DISTINCT company_name
+                FROM `users`
+                WHERE company_name IS NOT NULL AND company_name != ''
+                ORDER BY company_name
+            """)
+            companies = [row['company_name'] for row in cursor.fetchall()]
+
+            # 为每个公司获取用户列表
+            for company in companies:
+                cursor.execute("""
+                    SELECT id, display_name, email, phone
+                    FROM `users`
+                    WHERE company_name = %s
+                    ORDER BY display_name
+                """, (company,))
+                company_users[company] = cursor.fetchall()
+
+    return render_template('case/submit_ticket.html',
+                         current_user=user_data,
+                         companies=companies,
+                         company_users=company_users)
 
 
 @case_bp.route('/my-tickets', methods=['GET'])
 def my_tickets_page():
     """我的工单列表页面"""
+    user_id = session.get('user_id')
+    logger.info(f"[工单系统] 访问我的工单页面, session keys: {list(session.keys())}, user_id: {user_id}")
+
+    if not user_id:
+        logger.warning(f"[工单系统] 用户未登录, 重定向到登录页面")
+        return redirect('/case/?next=' + request.url)
+
     return render_template('case/ticket_list.html')
 
 
 @case_bp.route('/admin/tickets', methods=['GET'])
 def admin_tickets_page():
     """管理员工单列表页面"""
+    user_id = session.get('user_id')
+    logger.info(f"[工单系统] 访问工单管理页面, session keys: {list(session.keys())}, user_id: {user_id}")
+
+    if not user_id:
+        logger.warning(f"[工单系统] 用户未登录, 重定向到登录页面")
+        return redirect('/case/?next=' + request.url)
+
     return render_template('case/ticket_list.html')
 
 
 @case_bp.route('/ticket/<ticket_id>', methods=['GET'])
 def ticket_detail_page(ticket_id):
-    """工单详情页面"""
-    return render_template('case/ticket_detail.html', ticket_id=ticket_id)
+    """工单详情页面（论坛样式）"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect('/case/?next=' + request.url)
+
+    return render_template('case/ticket_detail_forum.html', ticket_id=ticket_id)
 
 
 @case_bp.route('/api/ticket/<ticket_id>/message', methods=['POST'])
@@ -769,7 +946,7 @@ def send_message(ticket_id):
             return error_response(message='消息内容不能为空')
         
         sender = session.get('role')
-        sender_name = session.get('real_name') or session.get('username', '匿名用户')
+        sender_name = session.get('display_name') or session.get('username', '匿名用户')
         
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
@@ -913,25 +1090,243 @@ def close_ticket(ticket_id):
         log_request(logger, request)
 
         user_role = session.get('role')
-        if not user_role or user_role != 'admin':
+        if not user_role or user_role not in ['admin', 'user']:
             from common.response import forbidden_response
             return forbidden_response(message='无权执行此操作')
-        
+
         with db_connection('case') as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("SELECT id FROM tickets WHERE ticket_id = %s", (ticket_id,))
             if not cursor.fetchone():
                 from common.response import not_found_response
                 return not_found_response(message='工单不存在')
-            
+
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             update_sql = "UPDATE tickets SET status = 'closed', update_time = %s WHERE ticket_id = %s"
             cursor.execute(update_sql, (now, ticket_id))
             conn.commit()
-        
-        logger.info(f"工单关闭: {ticket_id}")
+
+        logger.info(f"工单关闭: {ticket_id} by {user_role}")
         return success_response(message='工单关闭成功')
     except Exception as e:
         log_exception(logger, "关闭工单失败")
         return server_error_response(message=f'关闭失败：{str(e)}')
+
+
+@case_bp.route('/api/ticket/<ticket_id>/satisfaction', methods=['POST'])
+def submit_satisfaction(ticket_id):
+    """提交满意度评价"""
+    try:
+        log_request(logger, request)
+
+        user_id = session.get('user_id')
+        if not user_id:
+            return unauthorized_response(message='未登录')
+
+        user_role = session.get('role')
+        if user_role != 'customer':
+            return forbidden_response(message='只有客户可以进行评价')
+
+        data = request.get_json()
+        rating = data.get('rating')
+        comment = data.get('comment', '').strip()
+
+        if not rating or not (1 <= rating <= 5):
+            return error_response(message='评分必须在1-5之间')
+
+        with db_connection('case') as conn:
+            cursor = conn.cursor()
+
+            # 检查工单是否存在
+            cursor.execute("SELECT id, submit_user FROM tickets WHERE ticket_id = %s", (ticket_id,))
+            ticket = cursor.fetchone()
+
+            if not ticket:
+                from common.response import not_found_response
+                return not_found_response(message='工单不存在')
+
+            # 检查是否已经评价过
+            cursor.execute("SELECT id FROM satisfaction WHERE ticket_id = %s", (ticket_id,))
+            if cursor.fetchone():
+                return error_response(message='该工单已经评价过，无法重复评价')
+
+            # 插入评价记录
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            insert_sql = """
+                INSERT INTO satisfaction (ticket_id, rating, comment, create_time)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(insert_sql, (ticket_id, rating, comment, now))
+            conn.commit()
+
+        logger.info(f"工单评价提交: {ticket_id}, 评分: {rating} by user {user_id}")
+        return success_response(message='评价提交成功')
+    except Exception as e:
+        log_exception(logger, "提交满意度评价失败")
+        return server_error_response(message=f'提交失败：{str(e)}')
+
+
+@case_bp.route('/api/ticket/<ticket_id>/satisfaction', methods=['GET'])
+def get_satisfaction(ticket_id):
+    """获取工单满意度评价"""
+    try:
+        log_request(logger, request)
+
+        user_id = session.get('user_id')
+        if not user_id:
+            return unauthorized_response(message='未登录')
+
+        with db_connection('case') as conn:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+            select_sql = """
+                SELECT ticket_id, rating, comment, create_time
+                FROM satisfaction
+                WHERE ticket_id = %s
+            """
+            cursor.execute(select_sql, (ticket_id,))
+            satisfaction = cursor.fetchone()
+
+        if not satisfaction:
+            return success_response(data=None, message='该工单暂无评价')
+
+        satisfaction['create_time'] = satisfaction['create_time'].strftime('%Y-%m-%d %H:%M:%S')
+
+        return success_response(data=satisfaction, message='查询成功')
+    except Exception as e:
+        log_exception(logger, "查询满意度评价失败")
+        return server_error_response(message=f'查询失败：{str(e)}')
+
+
+@case_bp.route('/api/admin/reports', methods=['GET'])
+def get_reports():
+    """获取工单统计数据（管理员）"""
+    try:
+        log_request(logger, request)
+
+        user_role = session.get('role')
+        if not user_role or user_role not in ['admin', 'user']:
+            return forbidden_response(message='无权访问此功能')
+
+        # 获取时间范围参数
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+
+        with db_connection('case') as conn:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+            # 构建时间过滤条件
+            time_filter = ""
+            params = []
+            if start_date:
+                time_filter += " AND create_time >= %s"
+                params.append(start_date)
+            if end_date:
+                time_filter += " AND create_time <= %s"
+                params.append(end_date + " 23:59:59")
+
+            # 1. 工单总量统计
+            cursor.execute(f"""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed
+                FROM tickets
+                WHERE 1=1 {time_filter}
+            """, tuple(params))
+            status_stats = cursor.fetchone()
+
+            # 2. 按优先级统计
+            cursor.execute(f"""
+                SELECT
+                    priority,
+                    COUNT(*) as count
+                FROM tickets
+                WHERE 1=1 {time_filter}
+                GROUP BY priority
+                ORDER BY
+                    CASE priority
+                        WHEN 'urgent' THEN 1
+                        WHEN 'high' THEN 2
+                        WHEN 'medium' THEN 3
+                        WHEN 'low' THEN 4
+                    END
+            """, tuple(params))
+            priority_stats = cursor.fetchall()
+
+            # 3. 按问题类型统计
+            cursor.execute(f"""
+                SELECT
+                    issue_type,
+                    COUNT(*) as count
+                FROM tickets
+                WHERE 1=1 {time_filter}
+                GROUP BY issue_type
+                ORDER BY count DESC
+            """, tuple(params))
+            type_stats = cursor.fetchall()
+
+            # 4. 按产品统计
+            cursor.execute(f"""
+                SELECT
+                    product,
+                    COUNT(*) as count
+                FROM tickets
+                WHERE 1=1 {time_filter}
+                GROUP BY product
+                ORDER BY count DESC
+                LIMIT 10
+            """, tuple(params))
+            product_stats = cursor.fetchall()
+
+            # 5. 满意度统计
+            cursor.execute(f"""
+                SELECT
+                    AVG(rating) as avg_rating,
+                    COUNT(*) as total_ratings,
+                    SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END) as satisfied,
+                    SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as neutral,
+                    SUM(CASE WHEN rating <= 2 THEN 1 ELSE 0 END) as unsatisfied
+                FROM satisfaction s
+                INNER JOIN tickets t ON s.ticket_id = t.ticket_id
+                WHERE 1=1 {time_filter}
+            """, tuple(params))
+            satisfaction_stats = cursor.fetchone()
+
+            # 6. 最近7天趋势
+            cursor.execute("""
+                SELECT
+                    DATE(create_time) as date,
+                    COUNT(*) as count
+                FROM tickets
+                WHERE create_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                GROUP BY DATE(create_time)
+                ORDER BY date
+            """)
+            trend_stats = cursor.fetchall()
+
+        return success_response(data={
+            'status_distribution': status_stats,
+            'priority_distribution': priority_stats,
+            'type_distribution': type_stats,
+            'product_distribution': product_stats,
+            'satisfaction': satisfaction_stats,
+            'daily_trend': trend_stats
+        }, message='查询成功')
+    except Exception as e:
+        log_exception(logger, "查询统计数据失败")
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        return server_error_response(message=f'查询失败：{str(e)}')
+
+
+@case_bp.route('/admin/reports', methods=['GET'])
+def admin_reports_page():
+    """管理员报表页面"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect('/case/?next=' + request.url)
+
+    return render_template('case/admin_reports.html')

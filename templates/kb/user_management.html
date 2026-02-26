@@ -4,6 +4,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
+    <meta name="version" content="202402241435">
     <title>云户知识库 - 用户管理</title>
     <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -428,7 +429,7 @@
 
         <div class="row">
             <!-- 用户列表 -->
-            <div class="col-md-8">
+            <div class="col-md-12">
                 <div class="management-card">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h4><i class="fas fa-user-friends me-2"></i>用户列表</h4>
@@ -445,11 +446,10 @@
                                     <th>用户名</th>
                                     <th>显示名称</th>
                                     <th>邮箱</th>
+                                    <th>电话</th>
                                     <th>角色</th>
                                     <th>状态</th>
-                                    <th>密码类型</th>
-                                    <th>最后登录</th>
-                                    <th>创建时间</th>
+                                    <th>公司名称</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -464,14 +464,15 @@
                                             </div>
                                             <div>
                                                 <strong>{{ user.username }}</strong>
-                                                {% if user.real_name %}
-                                                <small class="d-block text-muted">{{ user.real_name }}</small>
+                                                {% if user.display_name %}
+                                                <small class="d-block text-muted">{{ user.display_name }}</small>
                                                 {% endif %}
                                             </div>
                                         </div>
                                     </td>
                                     <td>{{ user.display_name or '-' }}</td>
                                     <td>{{ user.email or '-' }}</td>
+                                    <td>{{ user.phone or '-' }}</td>
                                     <td>
                                         <span class="status-badge role-{{ user.role }}">
                                             {% if user.role == 'admin' %}
@@ -499,24 +500,29 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <span class="badge bg-secondary">{{ user.password_type|upper }}</span>
+                                        {{ user.company_name or '-' }}
                                     </td>
-                                    <td>
-                                        {% if user.last_login %}
-                                            {{ user.last_login.strftime('%Y-%m-%d %H:%M') }}
-                                        {% else %}
-                                            <span class="text-muted">从未登录</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                                     <td>
                                         <div class="action-buttons">
+                                            <button class="btn btn-sm btn-info btn-view-user"
+                                                    data-user-id="{{ user.id }}"
+                                                    data-username="{{ user.username }}"
+                                                    data-display-name="{{ user.display_name or '' }}"
+                                                    data-email="{{ user.email or '' }}"
+                                                    data-phone="{{ user.phone or '' }}"
+                                                    data-company-name="{{ user.company_name or '' }}"
+                                                    data-role="{{ user.role }}"
+                                                    data-status="{{ user.status }}"
+                                                    data-created-at="{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '' }}">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
                                             <button class="btn btn-sm btn-outline-primary btn-edit-user"
                                                     data-user-id="{{ user.id }}"
                                                     data-username="{{ user.username }}"
                                                     data-display-name="{{ user.display_name or '' }}"
-                                                    data-real-name="{{ user.real_name or '' }}"
                                                     data-email="{{ user.email or '' }}"
+                                                    data-phone="{{ user.phone or '' }}"
+                                                    data-company-name="{{ user.company_name or '' }}"
                                                     data-role="{{ user.role }}"
                                                     data-status="{{ user.status }}">
                                                 <i class="fas fa-edit"></i>
@@ -537,16 +543,47 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="row mt-3">
             <!-- 登录日志 -->
-            <div class="col-md-4">
+            <div class="col-md-12">
                 <div class="management-card">
                     <h4 class="mb-3"><i class="fas fa-history me-2"></i>最近登录记录</h4>
 
-                    <div class="login-logs">
+                    <!-- 搜索过滤区域 -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="filterUsername" placeholder="搜索用户名">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="filterIp" placeholder="搜索IP地址">
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="filterStatus">
+                                <option value="">全部状态</option>
+                                <option value="success">成功</option>
+                                <option value="failed">失败</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="button" class="btn btn-primary" id="applyFilter">
+                                <i class="fas fa-search me-1"></i>搜索
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="resetFilter">
+                                <i class="fas fa-redo me-1"></i>重置
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="login-logs" id="loginLogsContainer">
                         {% if login_logs %}
                             {% for log in login_logs %}
-                            <div class="card log-card log-{{ 'success' if log.status == 'success' else 'failed' }} mb-2">
+                            <div class="card log-card log-{{ 'success' if log.status == 'success' else 'failed' }} mb-2"
+                                 data-username="{{ log.username }}"
+                                 data-display-name="{{ log.display_name or '' }}"
+                                 data-ip="{{ log.ip_address }}"
+                                 data-status="{{ log.status }}">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between">
                                         <div>
@@ -616,6 +653,12 @@
                             </div>
                         </div>
                         <div class="mb-3">
+                            <label for="newCompanyName" class="form-label">公司名称 *</label>
+                            <input type="text" class="form-control" id="newCompanyName"
+                                   name="company_name" required placeholder="请输入公司名称">
+                            <div class="form-text">公司名称将作为密码类型使用</div>
+                        </div>
+                        <div class="mb-3">
                             <label for="newDisplayName" class="form-label">显示名称</label>
                             <input type="text" class="form-control" id="newDisplayName"
                                    name="display_name" placeholder="请输入显示名称(可选)">
@@ -624,6 +667,11 @@
                             <label for="newEmail" class="form-label">邮箱</label>
                             <input type="email" class="form-control" id="newEmail"
                                    name="email" placeholder="请输入邮箱(可选)">
+                        </div>
+                        <div class="mb-3">
+                            <label for="newPhone" class="form-label">电话</label>
+                            <input type="tel" class="form-control" id="newPhone"
+                                   name="phone" placeholder="请输入电话(可选)">
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -675,14 +723,20 @@
                                    name="display_name" placeholder="请输入显示名称">
                         </div>
                         <div class="mb-3">
-                            <label for="editRealName" class="form-label">真实姓名</label>
-                            <input type="text" class="form-control" id="editRealName"
-                                   name="real_name" placeholder="请输入真实姓名(可选)">
-                        </div>
-                        <div class="mb-3">
                             <label for="editEmail" class="form-label">邮箱</label>
                             <input type="email" class="form-control" id="editEmail"
                                    name="email" placeholder="请输入邮箱(可选)">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPhone" class="form-label">电话</label>
+                            <input type="tel" class="form-control" id="editPhone"
+                                   name="phone" placeholder="请输入电话(可选)">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editCompanyName" class="form-label">公司名称</label>
+                            <input type="text" class="form-control" id="editCompanyName"
+                                   name="company_name" placeholder="请输入公司名称">
+                            <div class="form-text">公司名称将作为密码类型使用</div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -741,6 +795,69 @@
         </div>
     </div>
 
+    <!-- 查看用户详情模态框 -->
+    <div class="modal fade" id="viewUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i>用户详情</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">用户名</label>
+                            <p id="viewUsername" class="form-control-plaintext">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">显示名称</label>
+                            <p id="viewDisplayName" class="form-control-plaintext">-</p>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">邮箱</label>
+                            <p id="viewEmail" class="form-control-plaintext">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">电话</label>
+                            <p id="viewPhone" class="form-control-plaintext">-</p>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">公司名称</label>
+                            <p id="viewCompanyName" class="form-control-plaintext">-</p>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">角色</label>
+                            <p id="viewRole" class="form-control-plaintext">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">状态</label>
+                            <p id="viewStatus" class="form-control-plaintext">-</p>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">最后登录</label>
+                            <p id="viewLastLogin" class="form-control-plaintext">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">创建时间</label>
+                            <p id="viewCreatedAt" class="form-control-plaintext">-</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 确认删除用户模态框 -->
     <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -780,20 +897,28 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
+            console.log('User management page loaded - version 202402241445');
             // 检查登录状态
             function checkLoginStatus() {
                 $.ajax({
                     url: '/kb/auth/check-login',
                     method: 'GET',
                     success: function(response) {
-                        if (!response.success) {
-                            window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname);
-                        } else if (response.user.role !== 'admin') {
+                        console.log('check-login response:', response);
+                        const user = response.data ? response.data.user : null;
+                        if (!response.success || !user) {
+                            console.log('Redirecting to login: success=' + response.success + ', user=' + (user ? 'exists' : 'null'));
+                            window.location.href = '/kb/auth/login?next=' + encodeURIComponent(window.location.pathname);
+                        } else if (user && user.role !== 'admin') {
+                            console.log('User role is not admin:', user.role);
                             window.location.href = '/kb/MGMT/';
+                        } else {
+                            console.log('User is logged in and has admin role');
                         }
                     },
-                    error: function() {
-                        window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname);
+                    error: function(xhr) {
+                        console.error('check-login error:', xhr);
+                        window.location.href = '/kb/auth/login?next=' + encodeURIComponent(window.location.pathname);
                     }
                 });
             }
@@ -847,12 +972,19 @@
                     password: $('#newPassword').val(),
                     display_name: $('#newDisplayName').val(),
                     email: $('#newEmail').val(),
+                    phone: $('#newPhone').val(),
+                    company_name: $('#newCompanyName').val(),
                     role: $('#newRole').val(),
                     status: $('#newStatus').val()
                 };
 
                 if (!formData.username || !formData.password) {
                     showMessage('用户名和密码不能为空', 'warning');
+                    return;
+                }
+
+                if (!formData.company_name) {
+                    showMessage('公司名称不能为空', 'warning');
                     return;
                 }
 
@@ -888,8 +1020,9 @@
                 $('#editUserId').val(currentEditUserId);
                 $('#editUsername').val($(this).data('username'));
                 $('#editDisplayName').val($(this).data('display-name'));
-                $('#editRealName').val($(this).data('real-name'));
                 $('#editEmail').val($(this).data('email'));
+                $('#editPhone').val($(this).data('phone'));
+                $('#editCompanyName').val($(this).data('company-name'));
                 $('#editRole').val($(this).data('role'));
                 $('#editStatus').val($(this).data('status'));
 
@@ -915,8 +1048,9 @@
             $('#submitEditUser').on('click', function() {
                 const formData = {
                     display_name: $('#editDisplayName').val(),
-                    real_name: $('#editRealName').val(),
                     email: $('#editEmail').val(),
+                    phone: $('#editPhone').val(),
+                    company_name: $('#editCompanyName').val(),
                     role: $('#editRole').val(),
                     status: $('#editStatus').val()
                 };
@@ -928,22 +1062,28 @@
                     }
                 }
 
+                console.log('Updating user with data:', formData);
                 $.ajax({
                     url: '/auth/api/update-user/' + currentEditUserId,
                     method: 'PUT',
                     contentType: 'application/json',
                     data: JSON.stringify(formData),
                     success: function(response) {
+                        console.log('Update user response:', response);
                         if (response.success) {
                             showMessage(response.message, 'success');
                             const modal = bootstrap.Modal.getInstance(document.getElementById('editUserModal'));
                             if (modal) modal.hide();
                             setTimeout(() => location.reload(), 1500);
                         } else {
+                            console.error('Update failed:', response);
                             showMessage(response.message, 'error');
                         }
                     },
                     error: function(xhr) {
+                        console.error('Update user error:', xhr);
+                        console.error('Status:', xhr.status);
+                        console.error('Response:', xhr.responseText);
                         if (xhr.responseJSON && xhr.responseJSON.message) {
                             showMessage('更新失败: ' + xhr.responseJSON.message, 'error');
                         } else {
@@ -951,6 +1091,34 @@
                         }
                     }
                 });
+            });
+
+            // 查看用户详情
+            $(document).on('click', '.btn-view-user', function() {
+                const userData = {
+                    username: $(this).data('username'),
+                    displayName: $(this).data('display-name'),
+                    email: $(this).data('email'),
+                    phone: $(this).data('phone'),
+                    companyName: $(this).data('company-name'),
+                    role: $(this).data('role'),
+                    status: $(this).data('status'),
+                    createdAt: $(this).data('created-at')
+                };
+
+                // 填充详情模态框
+                $('#viewUsername').text(userData.username || '-');
+                $('#viewDisplayName').text(userData.displayName || '-');
+                $('#viewEmail').text(userData.email || '-');
+                $('#viewPhone').text(userData.phone || '-');
+                $('#viewCompanyName').text(userData.companyName || '-');
+                $('#viewRole').text(userData.role === 'admin' ? '管理员' : (userData.role === 'user' ? '用户' : (userData.role === 'customer' ? '客户' : userData.role)));
+                $('#viewStatus').text(userData.status === 'active' ? '正常' : (userData.status === 'inactive' ? '禁用' : (userData.status === 'locked' ? '锁定' : userData.status)));
+                $('#viewLastLogin').text('-');
+                $('#viewCreatedAt').text(userData.createdAt || '-');
+
+                const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
+                modal.show();
             });
 
             // 删除用户
@@ -1013,6 +1181,74 @@
                 } else {
                     input.attr('type', 'password');
                     icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                }
+            });
+
+            // 登录记录搜索过滤功能
+            $('#applyFilter').on('click', function() {
+                const username = $('#filterUsername').val().toLowerCase();
+                const ip = $('#filterIp').val().toLowerCase();
+                const status = $('#filterStatus').val();
+
+                $('.log-card').each(function() {
+                    const cardUsername = $(this).data('username') || '';
+                    const cardDisplayName = $(this).data('display-name') || '';
+                    const cardIp = $(this).data('ip') || '';
+                    const cardStatus = $(this).data('status');
+
+                    let match = true;
+
+                    // 检查用户名
+                    if (username && !cardUsername.toLowerCase().includes(username) && !cardDisplayName.toLowerCase().includes(username)) {
+                        match = false;
+                    }
+
+                    // 检查IP地址
+                    if (ip && !cardIp.toLowerCase().includes(ip)) {
+                        match = false;
+                    }
+
+                    // 检查状态
+                    if (status && cardStatus !== status) {
+                        match = false;
+                    }
+
+                    if (match) {
+                        $(this).show();
+                    } else {
+                        $(this).hide();
+                    }
+                });
+
+                // 检查是否有匹配的记录
+                const visibleLogs = $('.log-card:visible').length;
+                if (visibleLogs === 0) {
+                    if ($('#noMatchMessage').length === 0) {
+                        $('#loginLogsContainer').append(
+                            '<div class="text-center py-4 text-muted" id="noMatchMessage">' +
+                            '<i class="fas fa-search fa-2x mb-3"></i>' +
+                            '<p>没有找到匹配的登录记录</p>' +
+                            '</div>'
+                        );
+                    }
+                } else {
+                    $('#noMatchMessage').remove();
+                }
+            });
+
+            // 重置搜索过滤
+            $('#resetFilter').on('click', function() {
+                $('#filterUsername').val('');
+                $('#filterIp').val('');
+                $('#filterStatus').val('');
+                $('.log-card').show();
+                $('#noMatchMessage').remove();
+            });
+
+            // 支持回车键触发搜索
+            $('#filterUsername, #filterIp').on('keypress', function(e) {
+                if (e.which === 13) {
+                    $('#applyFilter').click();
                 }
             });
         });

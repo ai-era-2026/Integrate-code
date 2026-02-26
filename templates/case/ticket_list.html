@@ -1,617 +1,438 @@
-{% extends "case/base.html" %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>我的工单 - 云户科技工单系统</title>
 
-{% block title %}工单列表 - 云户科技工单系统{% endblock %}
+    <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='case/css/ticket-system-v3.css') }}">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <img src="{{ url_for('static', filename='case/images/Logo.jpg') }}" alt="Logo" class="logo-img">
+                <span class="brand-text">工单管理系统</span>
+            </a>
 
-{% block content %}
-<div class="container">
-  <div class="page-header">
-    <h1><i class="fa fa-list"></i> 我的工单</h1>
-    <p class="subtitle">查看和管理您的工单记录</p>
-  </div>
+            <ul class="navbar-nav">
+                <li><a href="/case/submit" class="nav-link"><i class="fas fa-plus-circle"></i> 提交工单</a></li>
+                <li><a href="/case/my-tickets" class="nav-link active"><i class="fas fa-list"></i> 我的工单</a></li>
+                {% if session.get('role') in ['admin', 'user'] %}
+                <li><a href="/case/admin/tickets" class="nav-link"><i class="fas fa-tasks"></i> 工单管理</a></li>
+                {% endif %}
+            </ul>
 
-  <!-- 筛选和搜索 -->
-  <div class="filter-bar">
-    <div class="filter-group">
-      <label>工单状态：</label>
-      <select id="statusFilter" class="filter-select">
-        <option value="">全部状态</option>
-        <option value="pending">待处理</option>
-        <option value="processing">处理中</option>
-        <option value="completed">已解决</option>
-        <option value="closed">已关闭</option>
-      </select>
+            <div class="navbar-user">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span>{{ session.get('display_name') or session.get('username') }}</span>
+                    <span class="user-badge">{{ session.get('role') }}</span>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="showPasswordModal()">
+                    <i class="fas fa-key"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-wrapper">
+        <div class="page-container">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-list"></i>
+                    我的工单
+                </div>
+                <div class="card-body">
+                    <!-- 筛选栏 -->
+                    <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-weight: 600; color: var(--gray-600); margin-bottom: 8px; display: block;">工单状态</label>
+                            <select class="form-select" id="statusFilter">
+                                <option value="">全部状态</option>
+                                <option value="pending">待处理</option>
+                                <option value="processing">处理中</option>
+                                <option value="completed">已完成</option>
+                                <option value="closed">已关闭</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-weight: 600; color: var(--gray-600); margin-bottom: 8px; display: block;">优先级</label>
+                            <select class="form-select" id="priorityFilter">
+                                <option value="">全部优先级</option>
+                                <option value="urgent">紧急</option>
+                                <option value="high">高</option>
+                                <option value="medium">中</option>
+                                <option value="low">低</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-weight: 600; color: var(--gray-600); margin-bottom: 8px; display: block;">搜索</label>
+                            <input type="text" class="form-control" id="searchInput" placeholder="搜索工单编号或标题...">
+                        </div>
+                        <div style="display: flex; align-items: flex-end; gap: 8px;">
+                            <button class="btn btn-primary" onclick="applyFilters()">
+                                <i class="fas fa-search"></i> 筛选
+                            </button>
+                            <button class="btn btn-secondary" onclick="resetFilters()">
+                                <i class="fas fa-redo"></i> 重置
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 工单表格 -->
+                    <div id="loadingState" class="loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>加载中...</p>
+                    </div>
+
+                    <div id="noDataState" class="no-data" style="display: none;">
+                        <i class="fas fa-inbox"></i>
+                        <h3>暂无工单</h3>
+                        <p>点击"提交工单"创建您的第一个工单</p>
+                    </div>
+
+                    <div class="table-responsive" id="ticketTable">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>工单编号</th>
+                                    <th>标题</th>
+                                    <th>类型</th>
+                                    <th>优先级</th>
+                                    <th>状态</th>
+                                    <th>提交时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ticketTableBody">
+                                <!-- 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 分页 -->
+                    <div id="pagination" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="filter-group">
-      <label>优先级：</label>
-      <select id="priorityFilter" class="filter-select">
-        <option value="">全部优先级</option>
-        <option value="low">低</option>
-        <option value="medium">中</option>
-        <option value="high">高</option>
-        <option value="urgent">紧急</option>
-      </select>
+
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="passwordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-key"></i> 修改密码</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm">
+                        <div class="form-group">
+                            <label class="form-label">旧密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="oldPassword" required placeholder="请输入当前密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="newPassword" required placeholder="请输入新密码（至少6位）" minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">确认新密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="confirmPassword" required placeholder="请再次输入新密码" minlength="6">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="changePassword()">
+                        <i class="fas fa-save"></i> 保存修改
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="filter-group" style="flex: 1;">
-      <label>搜索：</label>
-      <input type="text" id="searchInput" class="search-input" placeholder="搜索工单标题或编号...">
-    </div>
-    <button id="refreshBtn" class="btn btn-secondary">
-      <i class="fa fa-refresh"></i> 刷新
-    </button>
-    {% if session.get('role') == 'admin' or session.get('role') == 'user' %}
-    <a href="/case/submit" class="btn btn-primary">
-      <i class="fa fa-plus"></i> 新建工单
-    </a>
-    {% endif %}
-  </div>
 
-  <!-- 工单列表 -->
-  <div class="ticket-list" id="ticketList">
-    <div class="loading" id="loading">
-      <i class="fa fa-spinner fa-spin"></i> 加载中...
-    </div>
-  </div>
-
-  <!-- 空状态 -->
-  <div class="empty-state" id="emptyState" style="display: none;">
-    <i class="fa fa-inbox"></i>
-    <p>暂无工单记录</p>
-    <a href="/case/submit" class="btn btn-primary">
-      <i class="fa fa-plus"></i> 提交工单
-    </a>
-  </div>
-</div>
-
-<style>
-  .container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-
-  .page-header {
-    text-align: center;
-    margin-bottom: 30px;
-    padding-bottom: 20px;
-    border-bottom: 2px solid #e5e7eb;
-  }
-
-  .page-header h1 {
-    font-size: 2rem;
-    color: #1a202c;
-    margin-bottom: 10px;
-  }
-
-  .page-header h1 i {
-    color: #0A4DA2;
-    margin-right: 10px;
-  }
-
-  .subtitle {
-    color: #6b7280;
-    font-size: 1rem;
-  }
-
-  .filter-bar {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    margin-bottom: 30px;
-    flex-wrap: wrap;
-  }
-
-  .filter-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .filter-group label {
-    font-weight: 600;
-    color: #374151;
-    font-size: 0.9rem;
-    white-space: nowrap;
-  }
-
-  .filter-select, .search-input {
-    padding: 8px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    outline: none;
-    transition: all 0.3s;
-  }
-
-  .filter-select {
-    min-width: 120px;
-    cursor: pointer;
-  }
-
-  .search-input {
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .filter-select:focus, .search-input:focus {
-    border-color: #0A4DA2;
-    box-shadow: 0 0 0 3px rgba(10, 77, 162, 0.1);
-  }
-
-  .btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
-    gap: 6px;
-  }
-
-  .btn i {
-    font-size: 0.85rem;
-  }
-
-  .btn-primary {
-    background: linear-gradient(135deg, #0A4DA2, #2563eb);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(10, 77, 162, 0.3);
-  }
-
-  .btn-secondary {
-    background: white;
-    color: #0A4DA2;
-    border: 1px solid #0A4DA2;
-  }
-
-  .btn-secondary:hover {
-    background: #f0f9ff;
-  }
-
-  .ticket-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-    gap: 20px;
-  }
-
-  .loading {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 60px;
-    color: #6b7280;
-    font-size: 1.1rem;
-  }
-
-  .loading i {
-    font-size: 2rem;
-    margin-right: 10px;
-  }
-
-  .ticket-card {
-    background: white;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    border-left: 4px solid;
-    transition: all 0.3s;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .ticket-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100%;
-    background: linear-gradient(135deg, rgba(10, 77, 162, 0.03), rgba(162, 217, 61, 0.03));
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .ticket-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  }
-
-  .ticket-card:hover::before {
-    opacity: 1;
-  }
-
-  .ticket-card.status-pending {
-    border-left-color: #f59e0b;
-  }
-
-  .ticket-card.status-processing {
-    border-left-color: #3b82f6;
-  }
-
-  .ticket-card.status-completed {
-    border-left-color: #10b981;
-  }
-
-  .ticket-card.status-closed {
-    border-left-color: #6b7280;
-  }
-
-  .ticket-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 16px;
-  }
-
-  .ticket-id {
-    font-size: 0.85rem;
-    color: #6b7280;
-    font-family: monospace;
-    background: #f3f4f6;
-    padding: 4px 8px;
-    border-radius: 4px;
-  }
-
-  .ticket-title {
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: #1a202c;
-    margin-bottom: 8px;
-  }
-
-  .ticket-badges {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .badge {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .badge-priority-high, .badge-priority-urgent {
-    background: #fee2e2;
-    color: #991b1b;
-  }
-
-  .badge-priority-medium {
-    background: #fef3c7;
-    color: #92400e;
-  }
-
-  .badge-priority-low {
-    background: #dbeafe;
-    color: #1e40af;
-  }
-
-  .badge-status-pending {
-    background: #fef3c7;
-    color: #92400e;
-  }
-
-  .badge-status-processing {
-    background: #dbeafe;
-    color: #1e40af;
-  }
-
-  .badge-status-completed {
-    background: #dcfce7;
-    color: #166534;
-  }
-
-  .badge-status-closed {
-    background: #f3f4f6;
-    color: #374151;
-  }
-
-  .ticket-meta {
-    display: flex;
-    gap: 20px;
-    padding: 16px 0;
-    border-top: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .ticket-meta-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.9rem;
-    color: #6b7280;
-  }
-
-  .ticket-meta-item i {
-    color: #0A4DA2;
-    width: 16px;
-    text-align: center;
-  }
-
-  .ticket-preview {
-    padding: 16px 0;
-    color: #4b5563;
-    font-size: 0.95rem;
-    line-height: 1.6;
-  }
-
-  .ticket-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 16px;
-  }
-
-  .ticket-time {
-    font-size: 0.85rem;
-    color: #9ca3af;
-  }
-
-  .ticket-actions .btn {
-    padding: 6px 14px;
-    font-size: 0.85rem;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    grid-column: 1 / -1;
-  }
-
-  .empty-state i {
-    font-size: 4rem;
-    color: #d1d5db;
-    margin-bottom: 20px;
-  }
-
-  .empty-state p {
-    font-size: 1.1rem;
-    color: #6b7280;
-    margin-bottom: 30px;
-  }
-
-  @media (max-width: 768px) {
-    .filter-bar {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .filter-group {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .filter-group label {
-      margin-bottom: 4px;
-    }
-
-    .ticket-list {
-      grid-template-columns: 1fr;
-    }
-
-    .ticket-header {
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .ticket-meta {
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .ticket-footer {
-      flex-direction: column;
-      gap: 12px;
-      align-items: stretch;
-    }
-
-    .btn {
-      justify-content: center;
-    }
-  }
-</style>
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-<script>
-  const socket = io('/', {
-    transports: ['websocket', 'polling'],
-    upgrade: false
-  });
-
-  async function loadTickets() {
-    const loading = document.getElementById('loading');
-    const ticketList = document.getElementById('ticketList');
-    const emptyState = document.getElementById('emptyState');
-    const statusFilter = document.getElementById('statusFilter').value;
-    const priorityFilter = document.getElementById('priorityFilter').value;
-
-    console.log('[DEBUG] 开始加载工单列表...');
-
-    try {
-      let url = '/case/api/tickets';
-      const params = [];
-      if (statusFilter) params.push('status=' + statusFilter);
-      if (priorityFilter) params.push('priority=' + priorityFilter);
-      if (params.length) url += '?' + params.join('&');
-
-      console.log('[DEBUG] 请求URL:', url);
-
-      const response = await fetch(url);
-      const result = await response.json();
-
-      console.log('[DEBUG] API返回:', result);
-
-      if (result.success) {
-        loading.style.display = 'none';
-        console.log('[DEBUG] 工单数量:', result.data.length);
-
-        if (result.data.length === 0) {
-          console.log('[DEBUG] 没有工单，显示空状态');
-          ticketList.innerHTML = '';
-          emptyState.style.display = 'block';
-          return;
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <h5>云户科技工单系统</h5>
+            <p>专业的客户服务支持平台</p>
+            <p>&copy; 2026 云户科技 版权所有</p>
+            <a href="/"><i class="fas fa-home"></i> 返回官网</a>
+        </div>
+    </footer>
+
+    <script src="/static/case/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- 统一登录检查 -->
+    <script src="{{ url_for('static', filename='case/js/unified-login-checker.js') }}?v=1.0"></script>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <script>
+        // 全局变量
+        const socket = io('/', {
+            transports: ['websocket', 'polling'],
+            upgrade: false
+        });
+
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentFilters = {
+            status: '',
+            priority: '',
+            search: ''
+        };
+
+        // 类型和优先级映射
+        const typeMap = {
+            'technical': '技术支持',
+            'service': '产品咨询',
+            'complaint': '售后投诉',
+            'other': '其他问题'
+        };
+
+        const priorityMap = {
+            'urgent': '紧急',
+            'high': '高',
+            'medium': '中',
+            'low': '低'
+        };
+
+        const statusMap = {
+            'pending': '待处理',
+            'processing': '处理中',
+            'completed': '已完成',
+            'closed': '已关闭'
+        };
+
+        // 加载工单列表
+        async function loadTickets() {
+            const loadingState = document.getElementById('loadingState');
+            const noDataState = document.getElementById('noDataState');
+            const ticketTable = document.getElementById('ticketTable');
+            const tableBody = document.getElementById('ticketTableBody');
+
+            loadingState.style.display = 'block';
+            ticketTable.style.display = 'none';
+            noDataState.style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    page_size: pageSize,
+                    status: currentFilters.status,
+                    priority: currentFilters.priority,
+                    search: currentFilters.search,
+                    my_only: 'true'
+                });
+
+                const response = await fetch(`/case/api/tickets?${params}`);
+                const data = await response.json();
+
+                loadingState.style.display = 'none';
+
+                if (data.success && data.data.tickets.length > 0) {
+                    ticketTable.style.display = 'block';
+                    renderTickets(data.data.tickets);
+                    renderPagination(data.data.total);
+                } else {
+                    noDataState.style.display = 'block';
+                    document.getElementById('pagination').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('加载失败:', error);
+                loadingState.style.display = 'none';
+                alert('加载工单失败，请刷新页面重试');
+            }
         }
 
-        console.log('[DEBUG] 开始渲染工单...');
-        emptyState.style.display = 'none';
-        renderTickets(result.data);
-        console.log('[DEBUG] 工单渲染完成');
-      } else {
-        console.error('[DEBUG] API返回失败:', result);
-        loading.innerHTML = '<i class="fa fa-exclamation-circle"></i> ' + (result.message || '加载失败');
-      }
-    } catch (error) {
-      console.error('[DEBUG] 加载工单异常:', error);
-      loading.innerHTML = '<i class="fa fa-exclamation-circle"></i> 加载失败';
-    }
-  }
+        // 渲染工单
+        function renderTickets(tickets) {
+            const tableBody = document.getElementById('ticketTableBody');
+            tableBody.innerHTML = tickets.map(ticket => `
+                <tr>
+                    <td><span style="font-family: monospace; font-weight: 600; color: var(--primary); background: var(--primary-pale); padding: 4px 8px; border-radius: 4px;">${ticket.ticket_id}</span></td>
+                    <td style="font-weight: 500;">${escapeHtml(ticket.title)}</td>
+                    <td>${typeMap[ticket.issue_type] || ticket.issue_type}</td>
+                    <td><span class="badge badge-priority-${ticket.priority}">${priorityMap[ticket.priority] || ticket.priority}</span></td>
+                    <td><span class="badge badge-status-${ticket.status}">${statusMap[ticket.status] || ticket.status}</span></td>
+                    <td>${formatDate(ticket.created_at || ticket.create_time)}</td>
+                    <td>
+                        <a href="/case/ticket/${ticket.ticket_id}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-eye"></i> 查看
+                        </a>
+                    </td>
+                </tr>
+            `).join('');
+        }
 
-  function renderTickets(tickets) {
-    console.log('[DEBUG] renderTickets 被调用，工单数量:', tickets.length);
-    const ticketList = document.getElementById('ticketList');
-    ticketList.innerHTML = '';
+        // 渲染分页
+        function renderPagination(total) {
+            const totalPages = Math.ceil(total / pageSize);
+            const paginationDiv = document.getElementById('pagination');
 
-    tickets.forEach((ticket, index) => {
-      console.log('[DEBUG] 渲染工单 ' + index + ':', ticket);
+            if (totalPages <= 1) {
+                paginationDiv.style.display = 'none';
+                return;
+            }
 
-      const card = document.createElement('div');
-      card.className = 'ticket-card status-' + ticket.status;
+            let html = '<div class="pagination">';
+            html += `<a class="pagination-link ${currentPage === 1 ? 'disabled' : ''}" onclick="goToPage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></a>`;
 
-      const statusText = {
-        'pending': '待处理',
-        'processing': '处理中',
-        'completed': '已解决',
-        'closed': '已关闭'
-      }[ticket.status] || ticket.status;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                    html += `<a class="pagination-link ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</a>`;
+                } else if (i === currentPage - 2 || i === currentPage + 2) {
+                    html += '<span style="padding: 0.5rem 1rem; color: var(--gray-500);">...</span>';
+                }
+            }
 
-      const priorityText = {
-        'low': '低',
-        'medium': '中',
-        'high': '高',
-        'urgent': '紧急'
-      }[ticket.priority] || ticket.priority;
+            html += `<a class="pagination-link ${currentPage === totalPages ? 'disabled' : ''}" onclick="goToPage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></a>`;
+            html += '</div>';
 
-      const typeText = {
-        'technical': '技术支持',
-        'service': '产品咨询',
-        'complaint': '售后投诉',
-        'other': '其他问题'
-      }[ticket.issue_type] || '未分类';
+            paginationDiv.innerHTML = html;
+            paginationDiv.style.display = 'flex';
+        }
 
-      card.innerHTML = `
-        <div class="ticket-header">
-          <div class="ticket-id">${ticket.ticket_id}</div>
-          <div class="ticket-badges">
-            <span class="badge badge-priority-${ticket.priority}">
-              <i class="fa fa-flag"></i> ${priorityText}
-            </span>
-            <span class="badge badge-status-${ticket.status}">
-              <i class="fa fa-clock"></i> ${statusText}
-            </span>
-            <span class="badge">
-              <i class="fa fa-tag"></i> ${typeText}
-            </span>
-          </div>
-        </div>
-        <div class="ticket-title">${ticket.title}</div>
-        <div class="ticket-meta">
-          <div class="ticket-meta-item">
-            <i class="fa fa-building"></i>
-            <span>${ticket.customer_name || '未填写'}</span>
-          </div>
-          <div class="ticket-meta-item">
-            <i class="fa fa-user"></i>
-            <span>${ticket.customer_contact_name || '未填写'}</span>
-          </div>
-          <div class="ticket-meta-item">
-            <i class="fa fa-phone"></i>
-            <span>${ticket.customer_contact || '未填写'}</span>
-          </div>
-        </div>
-        <div class="ticket-preview">
-          ${ticket.content ? (ticket.content.substring(0, 150) + (ticket.content.length > 150 ? '...' : '')) : ''}
-        </div>
-        <div class="ticket-footer">
-          <span class="ticket-time">
-            <i class="fa fa-calendar"></i> 创建时间：${ticket.create_time}
-          </span>
-          <div class="ticket-actions">
-            <button class="btn btn-primary" onclick="viewTicket('${ticket.ticket_id}')">
-              <i class="fa fa-eye"></i> 查看详情
-            </button>
-          </div>
-        </div>
-      `;
+        // 应用筛选
+        function applyFilters() {
+            currentFilters = {
+                status: document.getElementById('statusFilter').value,
+                priority: document.getElementById('priorityFilter').value,
+                search: document.getElementById('searchInput').value.trim()
+            };
+            currentPage = 1;
+            loadTickets();
+        }
 
-      card.addEventListener('click', () => viewTicket(ticket.ticket_id));
-      ticketList.appendChild(card);
-      console.log('[DEBUG] 工单 ' + index + ' 已添加到DOM');
-    });
+        // 重置筛选
+        function resetFilters() {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('priorityFilter').value = '';
+            document.getElementById('searchInput').value = '';
+            currentFilters = { status: '', priority: '', search: '' };
+            currentPage = 1;
+            loadTickets();
+        }
 
-    console.log('[DEBUG] ticketList 子元素数量:', ticketList.children.length);
-  }
+        // 跳转页面
+        function goToPage(page) {
+            currentPage = page;
+            loadTickets();
+        }
 
-  function viewTicket(ticketId) {
-    window.location.href = '/case/ticket/' + ticketId;
-  }
+        // 格式化日期
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
 
-  document.getElementById('statusFilter').addEventListener('change', loadTickets);
-  document.getElementById('priorityFilter').addEventListener('change', loadTickets);
-  document.getElementById('refreshBtn').addEventListener('click', loadTickets);
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-  document.getElementById('searchInput').addEventListener('input', debounce(function(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    const cards = document.querySelectorAll('.ticket-card');
+        // 退出登录
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                fetch('/case/api/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = '/case/';
+                    }
+                })
+                .catch(() => {
+                    window.location.href = '/case/';
+                });
+            }
+        }
 
-    cards.forEach(card => {
-      const title = card.querySelector('.ticket-title').textContent.toLowerCase();
-      const id = card.querySelector('.ticket-id').textContent.toLowerCase();
+        // 显示修改密码模态框
+        function showPasswordModal() {
+            new bootstrap.Modal(document.getElementById('passwordModal')).show();
+        }
 
-      if (title.includes(searchTerm) || id.includes(searchTerm)) {
-        card.style.display = '';
-      } else {
-        card.style.display = searchTerm ? 'none' : '';
-      }
-    });
-  }, 300));
+        // 修改密码
+        function changePassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
 
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
+            if (newPassword.length < 6) {
+                alert('新密码长度至少为6位');
+                return;
+            }
 
-  loadTickets();
+            if (newPassword !== confirmPassword) {
+                alert('两次输入的新密码不一致');
+                return;
+            }
 
-  socket.on('ticket_update', function(data) {
-    loadTickets();
-  });
+            if (oldPassword === newPassword) {
+                alert('新密码不能与旧密码相同');
+                return;
+            }
 
-  socket.on('new_message', function(data) {
-    loadTickets();
-  });
-</script>
-{% endblock %}
+            fetch('/auth/api/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('密码修改成功！');
+                    document.getElementById('changePasswordForm').reset();
+                    bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+                } else {
+                    alert('密码修改失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('修改密码失败:', error);
+                alert('密码修改失败，请稍后重试');
+            });
+        }
+
+        // WebSocket事件
+        socket.on('ticket_update', (data) => {
+            console.log('工单更新:', data);
+            loadTickets();
+        });
+
+        // 页面加载时获取工单
+        document.addEventListener('DOMContentLoaded', loadTickets);
+
+        // 搜索框回车事件
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
+        });
+    </script>
+</body>
+</html>

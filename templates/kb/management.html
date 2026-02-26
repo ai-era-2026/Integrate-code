@@ -522,12 +522,6 @@
                         <i class="fas fa-home"></i>
                         首页
                     </a>
-                    {% if current_user and current_user.role == 'admin' %}
-                    <a href="/kb/auth/users" class="nav-link-custom">
-                        <i class="fas fa-users"></i>
-                        用户
-                    </a>
-                    {% endif %}
                     <a href="/kb/auth/logout" class="nav-link-custom">
                         <i class="fas fa-sign-out-alt"></i>
                         退出
@@ -952,6 +946,7 @@
 
     <script src="/static/kb/js/bootstrap.bundle.min.js"></script>
     <script>
+        console.log('=== 脚本开始加载 ===');
         // 全局变量 - 从服务器端获取初始值
         let currentPage = {{ page | default(1) }};
         let perPage = 20;
@@ -965,14 +960,14 @@
         let selectedUnimportedNotes = new Set();  // 选中的未导入笔记ID
         let importCancelled = false;  // 导入取消标志
 
-        // DOM 元素
-        const dataTableBody = document.getElementById('dataTableBody');
-        const emptyState = document.getElementById('emptyState');
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const toastContainer = document.getElementById('toastContainer');
-        const searchInput = document.getElementById('searchInput');
-        const selectedCountEl = document.getElementById('selectedCount');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        // DOM 元素 - 在 DOMContentLoaded 中初始化
+        let dataTableBody = null;
+        let emptyState = null;
+        let loadingOverlay = null;
+        let toastContainer = null;
+        let searchInput = null;
+        let selectedCountEl = null;
+        let selectAllCheckbox = null;
 
         // 工具函数
         function showLoading() {
@@ -1059,14 +1054,25 @@
         }
 
         function renderTable(records) {
-            console.log('渲染表格，记录数:', records ? records.length : 0);
+            console.log('=== renderTable 开始执行 ===');
+            console.log('records 参数:', records);
+            console.log('records 长度:', records ? records.length : 'null/undefined');
+            console.log('dataTableBody:', dataTableBody);
+            console.log('emptyState:', emptyState);
+
+            if (!dataTableBody) {
+                console.error('dataTableBody 为 null！');
+                return;
+            }
 
             if (!records || records.length === 0) {
+                console.log('没有数据，显示空状态');
                 dataTableBody.innerHTML = '';
                 emptyState.style.display = 'block';
                 return;
             }
 
+            console.log('开始生成表格 HTML...');
             emptyState.style.display = 'none';
 
             const html = records.map(record => `
@@ -1104,9 +1110,18 @@
                 </tr>
             `).join('');
 
+            console.log('HTML 生成完成，长度:', html.length);
+            console.log('准备设置 innerHTML...');
+
             dataTableBody.innerHTML = html;
+
+            console.log('innerHTML 已设置');
+            console.log('dataTableBody 子元素数量:', dataTableBody.children.length);
+
             currentRecords = records;
             bindTableEvents();
+
+            console.log('=== renderTable 执行完成 ===');
         }
 
         function bindTableEvents() {
@@ -1293,20 +1308,6 @@
         }
 
         // ==================== Trilium批量导入功能 ====================
-        // 注意: Trilium搜索事件绑定已移到 DOMContentLoaded 中
-            const allChecked = this.textContent.includes('取消');
-            document.querySelectorAll('.import-item input[type="checkbox"]').forEach(checkbox => {
-                checkbox.checked = !allChecked;
-                if (!allChecked) {
-                    selectedTriliumNotes.add(checkbox.value);
-                } else {
-                    selectedTriliumNotes.delete(checkbox.value);
-                }
-                updateImportItemUI(checkbox.closest('.import-item'));
-            });
-            updateImportUI();
-        });
-
         // 批量导入 - 根据当前标签页决定调用哪个函数
         document.getElementById('saveBatchImportBtn').addEventListener('click', function() {
             const activeTab = document.querySelector('#triliumImportTabs .nav-link.active');
@@ -1930,6 +1931,19 @@
         // 页面初始化
         document.addEventListener('DOMContentLoaded', function() {
             console.log('=== 页面加载 - 初始化数据 ===');
+
+            // 初始化 DOM 元素
+            dataTableBody = document.getElementById('dataTableBody');
+            emptyState = document.getElementById('emptyState');
+            loadingOverlay = document.getElementById('loadingOverlay');
+            toastContainer = document.getElementById('toastContainer');
+            searchInput = document.getElementById('searchInput');
+            selectedCountEl = document.getElementById('selectedCount');
+            selectAllCheckbox = document.getElementById('selectAllCheckbox');
+
+            console.log('DOM 元素初始化完成');
+            console.log('dataTableBody:', dataTableBody);
+            console.log('emptyState:', emptyState);
             console.log('totalRecords:', {{ total_count | default(0) }});
 
             // 更新统计卡片中的总记录数
@@ -1942,23 +1956,28 @@
             }
 
             // 显示当前页数据（使用后端已序列化的 JSON）
+            console.log('=== 开始处理初始数据 ===');
             try {
                 const initialRecords = {{ records_json | tojson | safe }};
+                console.log('initialRecords 获取成功');
                 console.log('初始记录数量:', initialRecords.length);
                 console.log('初始记录类型:', typeof initialRecords);
+                console.log('第一条记录:', initialRecords[0]);
 
                 if (initialRecords && initialRecords.length > 0) {
-                    console.log('初始记录数据:', initialRecords);
-                    console.log('开始渲染表格...');
+                    console.log('===== 准备渲染表格 =====');
                     renderTable(initialRecords);
-                    console.log('开始渲染分页...');
+                    console.log('===== 准备渲染分页 =====');
                     renderPagination();
                     console.log('=== 初始化完成 ===');
                 } else {
-                    console.log('没有初始记录数据');
+                    console.log('没有初始记录数据，渲染空状态');
+                    renderTable([]);
+                    renderPagination();
                 }
             } catch (error) {
                 console.error('解析初始记录数据失败:', error);
+                console.error('错误堆栈:', error.stack);
             }
 
             // 主搜索框实时搜索（防抖）
@@ -2130,5 +2149,6 @@
             });
         });
     </script>
+    <script src="{{ url_for('static', filename='kb/js/kb-login-checker.js') }}?v=1.0"></script>
 </body>
 </html>

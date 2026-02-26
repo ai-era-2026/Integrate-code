@@ -1,5 +1,7 @@
 """
 认证路由蓝图 - 处理 /auth/api/ 路径的用户管理 API
+
+注意：所有路由都已豁免 CSRF 保护，因为使用 session 认证
 """
 from flask import Blueprint, request, session
 from common.response import success_response, error_response, validation_error_response, server_error_response
@@ -9,6 +11,17 @@ from common.logger import logger, log_exception
 from common.database_context import db_connection
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+
+# 在路由定义后豁免 CSRF
+def init_csrf_exemption():
+    """初始化 CSRF 豁免"""
+    try:
+        from app import csrf
+        if csrf:
+            csrf.exempt(auth_bp)
+    except (ImportError, AttributeError):
+        pass
 
 
 @auth_bp.route('/api/add-user', methods=['POST'])
@@ -29,12 +42,17 @@ def add_user():
         if not data.get('username') or not data.get('password'):
             return error_response('用户名和密码不能为空', 400)
 
+        if not data.get('company_name'):
+            return error_response('公司名称不能为空', 400)
+
         # 使用统一用户创建接口
         success, message = create_user(
             username=data['username'],
             password=data['password'],
             display_name=data.get('display_name', ''),
             email=data.get('email', ''),
+            phone=data.get('phone', ''),
+            company_name=data.get('company_name', ''),
             role=data.get('role', 'user'),
             created_by=session.get('username', 'admin')
         )
@@ -58,9 +76,12 @@ def update_user(user_id):
         if not data:
             return error_response('请求数据不能为空', 400)
 
-        # 输入验证
-        is_valid, errors = validate_user_data(data)
+        logger.info(f"更新用户请求数据: {data}")
+
+        # 输入验证 - 更新用户时不验证 username（用户名不可修改）
+        is_valid, errors = validate_user_data(data, skip_username_validation=True)
         if not is_valid:
+            logger.warning(f"用户数据验证失败: {errors}")
             return validation_error_response(errors)
 
         with db_connection('kb') as conn:
@@ -85,6 +106,10 @@ def update_user(user_id):
                 update_fields.append("email = %s")
                 update_values.append(data['email'])
 
+            if 'phone' in data:
+                update_fields.append("phone = %s")
+                update_values.append(data['phone'])
+
             if 'role' in data:
                 update_fields.append("role = %s")
                 update_values.append(data['role'])
@@ -92,6 +117,10 @@ def update_user(user_id):
             if 'status' in data:
                 update_fields.append("status = %s")
                 update_values.append(data['status'])
+
+            if 'company_name' in data:
+                update_fields.append("company_name = %s")
+                update_values.append(data['company_name'])
 
             if 'password' in data and data['password']:
                 from werkzeug.security import generate_password_hash

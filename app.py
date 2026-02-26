@@ -11,7 +11,7 @@ import jinja2
 import config
 from common.db_manager import get_pool
 from services.socketio_service import register_socketio_events, init_case_database
-from routes import home_bp, kb_bp, kb_management_bp, case_bp, unified_bp, api_bp, auth_bp
+from routes import home_bp, kb_bp, kb_management_bp, case_bp, unified_bp, api_bp, auth_bp, user_management_bp
 import os
 from datetime import timedelta
 
@@ -249,11 +249,15 @@ app.register_blueprint(case_bp)
 app.register_blueprint(unified_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(user_management_bp)
 
 # 排除登录端点的 CSRF 保护（这些是公开接口）
 if csrf:
     csrf.exempt(kb_bp)
     csrf.exempt(case_bp)
+    csrf.exempt(auth_bp)
+    csrf.exempt(user_management_bp)
+    csrf.exempt(home_bp)  # 官网系统的公开接口（如联系表单）不需要 CSRF 保护
 
 # 注册SocketIO事件
 register_socketio_events(socketio)
@@ -264,7 +268,8 @@ print("=" * 60)
 print(f"官网首页: http://{config.FLASK_HOST}:{config.FLASK_PORT}/")
 print(f"知识库系统: http://{config.FLASK_HOST}:{config.FLASK_PORT}/kb")
 print(f"工单系统: http://{config.FLASK_HOST}:{config.FLASK_PORT}/case")
-print(f"统一用户管理: http://{config.FLASK_HOST}:{config.FLASK_PORT}/unified/users")
+print(f"统一用户管理API: http://{config.FLASK_HOST}:{config.FLASK_PORT}/unified/users")
+print(f"用户管理控制台: http://{config.FLASK_HOST}:{config.FLASK_PORT}/user-mgmt/")
 print(f"API 文档: http://{config.FLASK_HOST}:{config.FLASK_PORT}/api/docs")
 print("=" * 60)
 

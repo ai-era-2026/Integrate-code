@@ -63,9 +63,10 @@
 Integrate-code/
 ├── 🐍 核心文件
 │   ├── app.py                      # Flask 应用主入口
-│   ├── config.py                   # 统一配置文件
+│   ├── config.py                   # 配置读取（从 .env）
 │   ├── requirements.txt            # Python 依赖
-│   └── .env.example               # 环境变量示例
+│   ├── .env.example               # 环境变量模板
+│   └── .env                       # 环境变量（本地配置，不提交）
 │
 ├── 🔧 公共模块 (common/)
 │   ├── db_manager.py              # 数据库连接池管理
@@ -86,47 +87,78 @@ Integrate-code/
 │   ├── case_bp.py                # 工单系统路由
 │   ├── unified_bp.py              # 统一用户管理路由
 │   ├── auth_bp.py                # 认证 API 路由
-│   └── api_bp.py                # API 路由（Trilium 等）
+│   ├── api_bp.py                # API 路由（Trilium 等）
+│   └── user_management_bp.py     # 用户管理控制台路由
 │
 ├── 💼 业务逻辑 (services/)
 │   ├── user_service.py            # 用户服务层
-│   └── socketio_service.py       # WebSocket 服务
+│   ├── socketio_service.py       # WebSocket 服务
+│   └── email_service.py          # 邮件服务
 │
 ├── 🎨 前端模板 (templates/)
 │   ├── home/                      # 官网模板
 │   ├── kb/                        # 知识库模板
 │   ├── case/                      # 工单模板
+│   ├── user_management/           # 用户管理模板
 │   └── common/                    # 通用模板
 │
 ├── 📦 静态资源 (static/)
 │   ├── common.css                 # 统一样式
+│   ├── common/js/                 # 通用 JavaScript
 │   ├── home/                      # 官网资源
 │   ├── kb/                        # 知识库资源
 │   └── case/                      # 工单资源
 │
 ├── 📜 工具脚本 (scripts/)
 │   ├── check_config.py            # 配置安全检查
+│   ├── check_dependencies.py      # 依赖检查
 │   ├── check_security.py          # 快速安全检查
-│   └── generate_secure_env.py     # 生成安全配置
+│   ├── generate_secure_env.py     # 生成安全配置
+│   ├── optimize_images.py         # 图片优化
+│   └── test_email_config.py       # 邮件配置测试
 │
 ├── 📚 文档 (docs/)
 │   ├── README.md                  # 文档索引
+│   ├── QUICK_START.md             # 快速开始
+│   ├── CONFIGURATION_GUIDE.md    # 配置详细说明
+│   ├── CONFIG_MIGRATION_GUIDE.md  # 配置迁移指南
+│   ├── EMAIL_CONFIG_GUIDE.md      # 邮件配置指南
 │   ├── HOME_SYSTEM_GUIDE.md       # 官网系统说明
 │   ├── KB_SYSTEM_GUIDE.md         # 知识库系统说明
 │   ├── CASE_SYSTEM_GUIDE.md       # 工单系统说明
 │   ├── UNIFIED_SYSTEM_GUIDE.md    # 统一用户管理说明
 │   ├── API_DOCS.md               # API 文档
-│   ├── OPTIMIZATION_PLAN.md       # 优化计划
 │   ├── SECURITY_IMPROVEMENTS.md  # 安全改进文档
-│   └── CODE_STATISTICS.md         # 代码统计
+│   ├── CHANGELOG.md               # 版本更新日志
+│   ├── CODE_STATISTICS.md         # 代码统计
+│   └── archive/                   # 归档的旧文档
 │
-├── 🗄️ 数据库
+├── 🗄️ 数据库 (database/)
 │   ├── init_database.sql           # 数据库初始化脚本
-│   └── .env                       # 环境变量（本地配置）
+│   ├── README.md                  # 数据库文档
+│   ├── QUICK_START.md             # 数据库快速开始
+│   └── patches/                   # 数据库补丁
+│       ├── v2.1_to_v2.2/          # v2.1→v2.2 补丁
+│       ├── v2.2_to_v2.3/          # v2.2→v2.3 补丁
+│       └── v2.4_to_v2.5/          # v2.4→v2.5 补丁
 │
-└── 🚀 启动脚本
-    ├── start.bat                 # Windows 启动脚本
-    └── start.sh                  # Linux/Mac 启动脚本
+├── 🧪 测试 (tests/)
+│   ├── conftest.py                # Pytest 配置
+│   ├── test_case.py               # 工单系统测试
+│   ├── test_home.py               # 官网系统测试
+│   ├── test_kb.py                 # 知识库系统测试
+│   └── MANUAL_TEST_GUIDE.md       # 手动测试指南
+│
+├── 🚀 启动脚本
+│   ├── start.bat                 # Windows 启动脚本
+│   └── start.sh                  # Linux/Mac 启动脚本
+│
+├── 📋 日志 (logs/)
+│   └── app.log                    # 应用日志
+│
+└── 📄 其他
+    ├── .gitignore                 # Git 忽略规则
+    └── README.md                  # 本文件
 ```
 
 ---
@@ -154,45 +186,47 @@ pip install -r requirements.txt
 
 ### 2. 配置环境
 
-#### 生成安全配置（推荐）
+#### 方法一：生成安全配置（推荐）
 
 ```bash
 python scripts/generate_secure_env.py
 ```
 
-#### 或手动创建 .env 文件
+#### 方法二：手动创建 .env 文件
 
 复制 `.env.example` 为 `.env` 并修改配置：
 
+```bash
+cp .env.example .env
+nano .env  # 或使用你喜欢的编辑器
+```
+
+**必须配置的项**（生产环境）：
+
 ```env
-# Flask 配置
-FLASK_SECRET_KEY=your-secret-key-here
-FLASK_DEBUG=False
-FLASK_HOST=0.0.0.0
-FLASK_PORT=5000
+# Flask 安全密钥
+FLASK_SECRET_KEY=your-secret-key-here-change-in-production
 
 # 数据库配置
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your-db-password
-DB_NAME_HOME=clouddoors_db
-DB_NAME_KB=YHKB
-DB_NAME_CASE=casedb
+DB_PASSWORD=your-strong-database-password
 
-# Trilium 配置（可选）
-TRILIUM_SERVER_URL=http://127.0.0.1:8080
-TRILIUM_TOKEN=your-trilium-token
+# Trilium Token（知识库功能）
+TRILIUM_TOKEN=your-trilium-api-token
 
-# 邮件配置
-SMTP_SERVER=smtp.qq.com
-SMTP_PORT=465
-SMTP_USERNAME=your-email@qq.com
-SMTP_PASSWORD=your-email-password
+# 默认管理员密码
+DEFAULT_ADMIN_PASSWORD=your-strong-admin-password
 
-# CORS 配置（生产环境建议设置允许的域名）
-ALLOWED_ORIGINS=*
+# 邮件密码
+MAIL_PASSWORD=your-email-password-or-authorization-code
+
+# 网站域名
+SITE_URL=https://www.your-domain.com
 ```
+
+详细配置说明请参考：
+- [配置详细说明](./docs/CONFIGURATION_GUIDE.md)
+- [配置迁移指南](./docs/CONFIG_MIGRATION_GUIDE.md)
+- [邮件配置指南](./docs/EMAIL_CONFIG_GUIDE.md)
 
 ### 3. 初始化数据库
 
@@ -295,31 +329,74 @@ python app.py
 
 ## 🔧 配置说明
 
-### Flask 配置
+### 配置文件策略
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `FLASK_HOST` | 0.0.0.0 | 监听地址 |
-| `FLASK_PORT` | 5000 | 服务端口 |
-| `DEBUG` | False | 调试模式 |
-| `SECRET_KEY` | - | Flask 密钥（必须设置） |
+从 v2.5 开始，项目采用**单一配置文件**策略：
+
+- **唯一配置源**: `.env` 文件
+- **配置读取**: `config.py` 仅负责从 `.env` 读取配置
+- **配置检查**: 启动时自动检查关键配置项
+
+### 快速配置清单
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `FLASK_SECRET_KEY` | Flask 安全密钥（必须配置） | 自动生成 |
+| `FLASK_DEBUG` | 调试模式 | `False` |
+| `FLASK_HOST` | 服务器监听地址 | `0.0.0.0` |
+| `FLASK_PORT` | 服务器端口 | `5000` |
+| `DB_HOST` | 数据库主机 | `127.0.0.1` |
+| `DB_PORT` | 数据库端口 | `3306` |
+| `DB_PASSWORD` | 数据库密码（必须配置） | - |
+| `MAIL_SERVER` | 邮件服务器 | `smtp.exmail.qq.com` |
+| `MAIL_PORT` | 邮件端口 | `465` |
+| `MAIL_USERNAME` | 邮件用户名 | - |
+| `MAIL_PASSWORD` | 邮件密码（必须配置） | - |
+| `TRILIUM_SERVER_URL` | Trilium 服务器 | `http://127.0.0.1:8080` |
+| `TRILIUM_TOKEN` | Trilium Token（必须配置） | - |
+| `DEFAULT_ADMIN_PASSWORD` | 默认管理员密码（必须配置） | `YHKB@2024` |
+| `SITE_URL` | 网站域名 | `http://0.0.0.0:5000` |
 
 ### 数据库配置
 
 三个系统共用一个数据库服务器，使用三个独立的数据库：
 
-- `clouddoors_db` - 官网系统
-- `YHKB` - 知识库系统
-- `casedb` - 工单系统
+- `clouddoors_db` (DB_NAME_HOME) - 官网系统
+- `YHKB` (DB_NAME_KB) - 知识库系统
+- `casedb` (DB_NAME_CASE) - 工单系统
 
 ### 连接池配置
 
-```python
-DB_POOL_MAX_CONNECTIONS = 20  # 最大连接数
-DB_POOL_MIN_CACHED = 5         # 最小缓存连接
-DB_POOL_MAX_CACHED = 10        # 最大缓存连接
-DB_POOL_MAX_SHARED = 5         # 最大共享连接
+```env
+DB_POOL_MAX_CONNECTIONS=20  # 最大连接数
+DB_POOL_MIN_CACHED=5        # 最小缓存连接
+DB_POOL_MAX_CACHED=10       # 最大缓存连接
+DB_POOL_MAX_SHARED=5        # 最大共享连接
 ```
+
+### 配置安全检查
+
+启动应用时会自动检查配置，显示警告和错误：
+
+```
+============================================================
+配置检查结果:
+
+【警告提示】:
+  [!] 知识库默认管理员密码未修改，建议立即修改
+
+【严重错误】: 
+  [X] DB_PASSWORD 未设置，数据库连接将失败
+  [X] TRILIUM_TOKEN 未设置，知识库功能将无法使用
+
+============================================================
+```
+
+### 配置文档
+
+- [配置详细说明](./docs/CONFIGURATION_GUIDE.md) - 所有配置项的详细说明
+- [配置迁移指南](./docs/CONFIG_MIGRATION_GUIDE.md) - 从旧版本迁移配置
+- [邮件配置指南](./docs/EMAIL_CONFIG_GUIDE.md) - 企业微信/QQ 邮箱配置
 
 ---
 
@@ -495,6 +572,32 @@ FLASK_PORT=5001
 ---
 
 ## 📝 更新日志
+
+### 2026-02-26 (v2.5 - 配置整合与项目清理)
+
+#### 配置架构重构
+- ✅ **单一配置文件策略**: 所有配置统一通过 `.env` 文件管理
+- ✅ 简化 `config.py`，仅负责从 `.env` 读取配置
+- ✅ 更新 `.env.example`，包含所有配置项的详细说明
+- ✅ 新增 [配置迁移指南](./docs/CONFIG_MIGRATION_GUIDE.md)
+
+#### 项目清理
+- 🗑️ 删除临时文件：`test_layout.html`、备份文件
+- 🗑️ 删除空目录：`p/`、`echo/`、`legacy/`、`patches/`
+- 📦 归档临时修复文档到 `docs/archive/`
+
+#### 代码优化
+- 🐛 修复 `check-login` 端点的限流问题（HTTP 429 错误）
+- ✅ 为所有 `check-login` 端点添加限流豁免
+- 📝 更新主 [README.md](./README.md) 文档
+- 📝 更新项目结构说明
+
+#### 文档更新
+- 📚 新增配置迁移指南
+- 📚 更新配置相关文档
+- 📚 优化 README 结构
+
+---
 
 ### 2026-02-12 (v2.0.2 - 知识库管理优化)
 

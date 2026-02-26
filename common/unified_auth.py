@@ -21,7 +21,7 @@ def authenticate_user(username, password):
         with conn.cursor() as cursor:
             # 查询用户信息 - 支持用户名或邮箱登录
             sql = """
-            SELECT id, username, password_hash, display_name, real_name, role, status, login_attempts
+            SELECT id, username, password_hash, display_name, role, status, login_attempts
             FROM `users`
             WHERE (username = %s OR email = %s) AND status = 'active'
             """
@@ -42,19 +42,17 @@ def authenticate_user(username, password):
                     password_valid = check_password_hash(password_hash, password)
                 user_id = user.get('id')
                 display_name_val = user.get('display_name')
-                real_name_val = user.get('real_name')
                 role_val = user.get('role')
                 login_attempts = user.get('login_attempts', 0)
             else:
                 # 元组类型（普通cursor）
-                # 字段索引: 0=id, 1=username, 2=password_hash, 3=display_name, 4=real_name, 5=role, 6=status, 7=login_attempts
-                user_id, user_name, pwd_hash, disp_name, r_name, user_role, user_status, attempts = user
+                # 字段索引: 0=id, 1=username, 2=password_hash, 3=display_name, 4=role, 5=status, 6=login_attempts
+                user_id, user_name, pwd_hash, disp_name, user_role, user_status, attempts = user
 
                 if pwd_hash:
                     password_valid = check_password_hash(pwd_hash, password)
 
                 display_name_val = disp_name
-                real_name_val = r_name
                 role_val = user_role
                 login_attempts = attempts
 
@@ -63,15 +61,13 @@ def authenticate_user(username, password):
                 if isinstance(user, dict):
                     user_id = user.get('id')
                     display_name_val = user.get('display_name')
-                    real_name_val = user.get('real_name')
                     role_val = user.get('role')
                     login_attempts = user.get('login_attempts', 0)
                 else:
                     user_id = user[0]
                     display_name_val = user[4]
-                    real_name_val = user[5]
-                    role_val = user[6]
-                    login_attempts = user[8]
+                    role_val = user[5]
+                    login_attempts = user[7]
 
                 # 登录成功，更新登录信息
                 update_sql = """
@@ -96,13 +92,11 @@ def authenticate_user(username, password):
                 conn.commit()
 
                 # 返回用户信息
-                # display_name 或 real_name 可能为 None，优先使用非空的
-                display_name = display_name_val or real_name_val or username
+                display_name = display_name_val or username
                 user_info = {
                     'id': user_id,
                     'username': username,
                     'display_name': display_name,
-                    'real_name': real_name_val,
                     'role': role_val
                 }
                 return True, user_info
@@ -113,7 +107,7 @@ def authenticate_user(username, password):
                     login_attempts = user.get('login_attempts', 0)
                 else:
                     user_id = user[0]
-                    login_attempts = user[8]
+                    login_attempts = user[7]
 
                 # 登录失败，增加尝试次数
                 update_sql = """
@@ -160,7 +154,6 @@ def get_current_user():
             'id': session['user_id'],
             'username': session['username'],
             'display_name': session.get('display_name'),
-            'real_name': session.get('real_name'),
             'role': session.get('role')
         }
     return None
@@ -189,7 +182,7 @@ def login_required(roles=None):
     return decorator
 
 
-def create_user(username, password, display_name=None, real_name=None, email=None, role='user', created_by='admin'):
+def create_user(username, password, display_name=None, email=None, phone=None, company_name=None, role='user', created_by='admin'):
     """
     创建新用户（统一接口）
     统一使用 werkzeug 密码加密
@@ -210,20 +203,21 @@ def create_user(username, password, display_name=None, real_name=None, email=Non
 
             # 插入用户
             insert_sql = """
-            INSERT INTO `users` (username, password_hash, password_type, display_name, real_name, email, role, status, system, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO `users` (username, password_hash, password_type, display_name, email, phone, role, status, system, created_by, company_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(insert_sql, (
                 username,
                 password_hash,
                 'werkzeug',
                 display_name,
-                real_name,
                 email,
+                phone,
                 role,
                 'active',
                 'unified',
-                created_by
+                created_by,
+                company_name
             ))
             conn.commit()
 

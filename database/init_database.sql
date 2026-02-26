@@ -56,9 +56,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
     `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
     `password_hash` VARCHAR(255) NOT NULL COMMENT '密码哈希值（werkzeug加密）',
-    `password_md5` VARCHAR(64) DEFAULT NULL COMMENT '密码MD5值（已废弃，保留以兼容）',
     `display_name` VARCHAR(100) COMMENT '显示名称',
-    `real_name` VARCHAR(100) COMMENT '真实姓名',
     `email` VARCHAR(100) COMMENT '邮箱',
     `company_name` VARCHAR(200) DEFAULT NULL COMMENT '公司名称(客户角色必填)',
     `phone` VARCHAR(20) DEFAULT NULL COMMENT '联系电话',
@@ -159,6 +157,17 @@ CREATE TABLE IF NOT EXISTS `messages` (
     INDEX idx_ticket_id (`ticket_id`),
     INDEX idx_send_time (`send_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工单聊天消息表';
+
+-- 工单满意度评价表
+CREATE TABLE IF NOT EXISTS `satisfaction` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '评价ID',
+    `ticket_id` VARCHAR(32) NOT NULL UNIQUE COMMENT '工单ID',
+    `rating` TINYINT NOT NULL COMMENT '评分(1-5)',
+    `comment` TEXT NULL COMMENT '评价文字',
+    `create_time` DATETIME NOT NULL COMMENT '评价时间',
+    INDEX idx_ticket_id (`ticket_id`),
+    INDEX idx_create_time (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工单满意度评价表';
 
 -- 工单数据由用户通过前端界面创建
 

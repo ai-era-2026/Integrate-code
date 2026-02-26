@@ -9,6 +9,7 @@ from .case_bp import case_bp
 from .unified_bp import unified_bp
 from .api_bp import api_bp
 from .auth_bp import auth_bp
+from .user_management_bp import user_management_bp
 
 __all__ = [
     'home_bp',
@@ -17,5 +18,6 @@ __all__ = [
     'case_bp',
     'unified_bp',
     'api_bp',
-    'auth_bp'
+    'auth_bp',
+    'user_management_bp'
 ]

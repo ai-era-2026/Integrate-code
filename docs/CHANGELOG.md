@@ -8,10 +8,257 @@
 
 | 版本 | 日期 | 状态 |
 |------|------|------|
-| [v2.3](#v23-2026-02-13) | 2026-02-13 | 当前版本 |
+| [v2.5](#v25-2026-02-26) | 2026-02-26 | 最新版本 |
+| [v2.4](#v24-2026-02-25) | 2026-02-25 | 稳定版本 |
+| [v2.3](#v23-2026-02-13) | 2026-02-13 | 稳定版本 |
 | [v2.2](#v22-2026-02-13) | 2026-02-13 | 稳定版本 |
 | [v2.1](#v21-2026-02-12) | 2026-02-12 | 稳定版本 |
 | [v2.0](#v20-2026-02-10) | 2026-02-10 | 架构重构 |
+
+---
+
+## v2.5 (2026-02-26)
+
+### 🎯 主要更新
+
+#### 1. 配置架构重构 🔧
+
+**功能说明**: 采用单一配置文件策略，简化配置管理
+
+**新增功能**:
+- ✅ 所有配置统一通过 `.env` 文件管理
+- ✅ 简化 `config.py`，仅负责从 `.env` 读取配置
+- ✅ 更新 `.env.example`，包含所有配置项的详细说明
+- ✅ 启动时自动检查关键配置项
+
+**实现细节**:
+- 重构 `config.py`，移除硬编码的默认值
+- 统一使用 `os.getenv()` 读取环境变量
+- 保留 `check_config()` 函数，启动时自动验证配置
+- 添加配置项分类注释，便于理解
+
+**配置项**:
+- Flask 基础配置（SECRET_KEY、DEBUG、Session 等）
+- 服务器配置（FLASK_HOST、FLASK_PORT、SITE_URL）
+- 数据库配置（DB_HOST、DB_PORT、DB_PASSWORD 等）
+- 邮件配置（MAIL_SERVER、MAIL_PORT、MAIL_USERNAME 等）
+- Trilium 配置（TRILIUM_SERVER_URL、TRILIUM_TOKEN 等）
+- 知识库配置（DEFAULT_ADMIN_PASSWORD 等）
+- CORS 配置
+- Redis 配置
+- CDN 配置
+- 图片优化配置
+- 缓存配置
+- 日志配置
+- 数据库连接池配置
+- Session 配置
+- 文件上传配置
+- 静态文件配置
+
+**新增文档**:
+- [配置迁移指南](./CONFIG_MIGRATION_GUIDE.md) - 详细的迁移步骤和常见问题
+- [项目清理总结](./PROJECT_CLEANUP_SUMMARY.md) - 本次清理工作的详细说明
+- [快速升级指南](./QUICKSTART_CLEANUP.md) - v2.4→v2.5 快速升级步骤
+
+#### 2. 项目清理 🧹
+
+**删除的临时文件**:
+- 🗑️ `test_layout.html` - 测试布局文件
+- 🗑️ `templates/home/index.html.backup` - 官网首页备份
+
+**删除的空目录**:
+- 🗑️ `p/` - 临时目录（0 B）
+- 🗑️ `echo/` - 临时目录（0 B）
+- 🗑️ `legacy/` - 旧代码目录（0 B）
+- 🗑️ `patches/` - 补丁目录（0 B）
+- 🗑️ `Directories created or already exist/` - 临时目录（0 B）
+
+**归档的文档**:
+- 📦 归档到 `docs/archive/`:
+  - `LAYOUT_FIX_GUIDE.md` - 布局修复指南
+  - `FINAL_LAYOUT_FIX.md` - 最终布局修复
+  - `USER_MANAGEMENT_COMPANY_NAME_MODIFICATION.md` - 用户管理公司名称修改
+
+#### 3. 代码修复 🐛
+
+**修复限流问题**:
+- ✅ 修复 `check-login` 端点的 HTTP 429 错误
+- ✅ 为所有 `check-login` 端点添加限流豁免
+
+**修改的文件**:
+- `routes/case_bp.py` - 工单系统 check-login 端点
+- `routes/kb_bp.py` - 知识库系统 check-login 端点
+- `routes/user_management_bp.py` - 用户管理 check-login 端点
+
+**实现代码**:
+```python
+from app import limiter
+limiter.exempt(check_login)
+```
+
+#### 4. 文档更新 📚
+
+**更新的文档**:
+- ✅ [README.md](../README.md) - 更新项目结构、配置说明、快速开始步骤
+- ✅ [配置迁移指南](./CONFIG_MIGRATION_GUIDE.md) - 新增
+- ✅ [项目清理总结](./PROJECT_CLEANUP_SUMMARY.md) - 新增
+- ✅ [快速升级指南](./QUICKSTART_CLEANUP.md) - 新增
+- ✅ [CHANGELOG.md](./CHANGELOG.md) - 添加 v2.5 版本记录
+
+**新增内容**:
+- 项目结构更新（新增 `docs/archive/` 目录）
+- 配置快速清单
+- 配置安全检查说明
+- 配置文档链接
+- v2.5 版本更新日志
+
+#### 5. 静态资源处理 ⚠️
+
+**未合并的重复资源**:
+以下静态资源有重复，但暂时保留：
+
+- `static/kb/js/bootstrap.bundle.min.js` (78.54 KB)
+- `static/case/js/bootstrap.bundle.min.js` (78.54 KB)
+
+**保留原因**:
+- 不同系统可能需要不同版本
+- 修改模板引用可能影响功能
+- 建议后续逐步统一
+
+**建议**:
+- 评估是否需要统一 Bootstrap 版本
+- 如果统一，复制到 `static/common/js/`
+- 更新所有模板引用
+
+### 📊 配置清单
+
+#### 必须配置项（生产环境）
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `FLASK_SECRET_KEY` | Flask 安全密钥 | 自动生成 |
+| `DB_PASSWORD` | 数据库密码 | - |
+| `TRILIUM_TOKEN` | Trilium API Token | - |
+| `DEFAULT_ADMIN_PASSWORD` | 默认管理员密码 | `YHKB@2024` |
+| `MAIL_PASSWORD` | 邮件密码 | - |
+| `SITE_URL` | 网站域名 | `http://0.0.0.0:5000` |
+
+#### 可选配置项
+
+- `FLASK_HOST` - 服务器监听地址 (默认: `0.0.0.0`)
+- `FLASK_PORT` - 服务器端口 (默认: `5000`)
+- `MAIL_SERVER` - 邮件服务器 (默认: `smtp.exmail.qq.com`)
+- `REDIS_ENABLED` - 是否启用 Redis (默认: `False`)
+- `IMAGE_QUALITY` - 图片质量 (默认: `80`)
+- `LOG_LEVEL` - 日志级别 (默认: `INFO`)
+
+完整配置清单请参考 [`.env.example`](../.env.example)
+
+### 🔄 升级指南
+
+#### 从 v2.4 升级到 v2.5
+
+1. **备份现有配置**
+   ```bash
+   cp .env .env.backup
+   cp config.py config.py.backup
+   ```
+
+2. **更新 .env 文件**
+   - 参考 [快速升级指南](./QUICKSTART_CLEANUP.md)
+   - 复制新的 `.env.example` 或手动更新
+   - 添加缺失的配置项
+
+3. **验证配置**
+   ```bash
+   python app.py
+   # 检查启动日志中的配置检查结果
+   ```
+
+4. **测试功能**
+   - 测试数据库连接
+   - 测试邮件发送
+   - 测试 Trilium 集成
+   - 测试各个系统功能
+
+详细升级步骤请参考 [配置迁移指南](./CONFIG_MIGRATION_GUIDE.md)
+
+### 🐛 已知问题
+
+- ⚠️ Bootstrap 库重复，后续版本将统一
+- ⚠️ 需要更新 `.env` 文件，配置项较多
+
+### 🚀 下一步计划
+
+- [ ] 统一重复的静态资源
+- [ ] 优化配置检查逻辑
+- [ ] 添加配置验证测试
+- [ ] 考虑使用配置管理工具（如 Vault）
+- [ ] 添加配置热更新功能
+- [ ] 支持多环境配置（dev、staging、prod）
+
+---
+
+## v2.4 (2026-02-25)
+
+### 🎯 主要更新
+
+#### 1. 企业微信邮箱对接 📧
+
+**功能说明**: 实现邮件通知功能，支持将联系表单和工单创建信息发送到企业微信邮箱
+
+**新增功能**:
+- ✅ 首页"联系我们"表单提交后自动发送邮件通知
+- ✅ 工单创建成功后自动发送包含完整工单信息的邮件
+- ✅ 支持HTML格式邮件模板，专业的样式设计
+- ✅ 支持附件信息展示（工单附件）
+- ✅ 完整的邮件发送错误处理和日志记录
+
+**实现细节**:
+- 创建 `services/email_service.py` 邮件服务模块
+  - `EmailService` 类封装邮件发送逻辑
+  - `send_contact_notification()`: 发送联系我们通知
+  - `send_ticket_created_notification()`: 发送工单创建通知
+  - 支持多种SMTP服务商（企业微信、QQ、Gmail等）
+- 更新 `routes/home_bp.py` 的联系表单提交API，集成邮件发送
+- 更新 `routes/case_bp.py` 的工单创建API，集成邮件通知
+- 邮件模板使用云户科技品牌色，响应式设计
+
+**邮件模板特性**:
+- **联系我们邮件**：包含留言人姓名、邮箱、电话、留言内容，蓝色主题
+- **工单创建邮件**：包含工单编号、客户信息、工单类型、优先级、标题、内容、附件列表，绿色主题
+
+**配置文件**:
+- 创建 `.env.example` 配置示例文件
+- 创建 `docs/ENTERPRISE_EMAIL_SETUP.md` 详细配置文档
+
+**支持邮箱服务商**:
+- 企业微信邮箱：`smtp.exmail.qq.com:465` (SSL)
+- QQ邮箱：`smtp.qq.com:465` (SSL)
+- Gmail：`smtp.gmail.com:587` (TLS)
+- 163邮箱：`smtp.163.com:465` (SSL)
+- 126邮箱：`smtp.126.com:465` (SSL)
+
+**配置说明**:
+```env
+# SMTP配置
+SMTP_SERVER=smtp.exmail.qq.com
+SMTP_PORT=465
+SMTP_USERNAME=yourname@company.com
+SMTP_PASSWORD=your-email-password
+EMAIL_SENDER=yourname@company.com
+CONTACT_EMAIL=yourname@company.com
+```
+
+**修改文件**:
+- `services/email_service.py` - 新建邮件服务模块
+- `routes/home_bp.py` - 更新联系表单提交API
+- `routes/case_bp.py` - 更新工单创建API
+- `.env.example` - 新建配置示例文件
+- `docs/ENTERPRISE_EMAIL_SETUP.md` - 新建企业微信邮箱配置文档
+- `docs/CHANGELOG.md` - 更新更新日志
+
+**详细文档**: `docs/ENTERPRISE_EMAIL_SETUP.md`
 
 ---
 
@@ -48,7 +295,33 @@
 
 ---
 
-#### 2. 导入错误修复 🔧
+#### 2. 工单系统重构完善 🎫
+
+**目标**: 完善工单系统，支持按公司管理客户和联系人
+
+**完成内容**:
+- ✅ 多公司客户管理支持
+- ✅ 客户联系人按公司分组
+- ✅ 工单创建时自动填充联系人信息
+- ✅ 工单抄送邮箱功能
+- ✅ 完善的权限控制（admin、user、customer 角色）
+- ✅ 数据库结构更新（v2.3 版本）
+
+**数据库变更**:
+- ✅ users 表添加字段: `company_name`, `phone`
+- ✅ tickets 表添加字段: `cc_emails`
+- ✅ 索引优化: `idx_company_name`
+
+**权限体系**:
+- **管理员 (admin)**: 查看所有工单、创建工单、选择公司和联系人
+- **普通用户 (user)**: 查看所有工单、查看我的工单、创建工单
+- **客户 (customer)**: 只能查看自己创建的工单
+
+**详细文档**: `docs/CASE_SYSTEM_REDESIGN.md`
+
+---
+
+#### 3. 导入错误修复 🔧
 
 **问题**: 代码重构后出现多个导入错误
 

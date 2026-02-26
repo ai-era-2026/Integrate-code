@@ -62,7 +62,7 @@ def register_socketio_events(socketio):
         content = data.get('content')
         
         sender = session.get('role')
-        sender_name = session.get('real_name') or session.get('username', '匿名用户')
+        sender_name = session.get('display_name') or session.get('username', '匿名用户')
 
         if not all([ticket_id, sender, content]):
             return {'success': False, 'message': '消息参数不完整'}
