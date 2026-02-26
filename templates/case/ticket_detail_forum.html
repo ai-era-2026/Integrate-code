@@ -470,10 +470,12 @@
                 return;
             }
 
+
             repliesList.innerHTML = messages.map(msg => {
-                const isService = msg.sender === 'service';
+                // 判断是否是客服角色（admin或user），customer是客户
+                const isService = msg.sender === 'admin' || msg.sender === 'user';
                 const roleClass = isService ? 'service' : 'customer';
-                const roleText = isService ? '客服' : '客户';
+                const roleText = isService ? '技术支持' : '客户';
                 const firstLetter = msg.sender_name.charAt(0).toUpperCase();
 
                 return `
@@ -689,7 +691,12 @@
 
                 if (result.success) {
                     alert('密码修改成功，请重新登录');
-                    window.location.href = '/case/logout';
+                    // 使用表单提交退出登录
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/case/api/logout';
+                    document.body.appendChild(form);
+                    form.submit();
                 } else {
                     alert(result.message || '密码修改失败');
                 }
@@ -702,7 +709,12 @@
         // 登出
         function logout() {
             if (confirm('确定要登出吗？')) {
-                window.location.href = '/case/logout';
+                // 使用表单提交退出登录
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/case/api/logout';
+                document.body.appendChild(form);
+                form.submit();
             }
         }
     </script>

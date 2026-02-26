@@ -49,6 +49,12 @@
                             <i class="fas fa-chart-bar"></i> 统计报表
                         </a>
                     </li>
+                    {% elif session.get('role') == 'customer' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/case/my-tickets">
+                            <i class="fas fa-list"></i> 我的工单
+                        </a>
+                    </li>
                     {% endif %}
                     {% endif %}
                 </ul>
@@ -262,30 +268,15 @@
             // 退出登录功能
             document.getElementById('logoutBtn').addEventListener('click', function(e) {
                 e.preventDefault();
-                
+
                 // 显示确认对话框
                 if (confirm('确定要退出登录吗？')) {
-                    // 发送退出登录请求
-                    fetch('/case/api/logout', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // 退出成功，跳转到登录页面
-                            window.location.href = '/case/';
-                        } else {
-                            alert('退出失败：' + data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('退出登录失败:', error);
-                        // 即使API调用失败也跳转到登录页面
-                        window.location.href = '/case/';
-                    });
+                    // 创建表单并提交
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/case/api/logout';
+                    document.body.appendChild(form);
+                    form.submit();
                 }
             });
 

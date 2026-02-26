@@ -91,12 +91,10 @@ def logout():
 @kb_bp.route('/auth/check-login')
 def check_login():
     """检查登录状态"""
-    # 登录状态检查端点豁免限流（前端频繁调用）
-    from app import limiter
-    limiter.exempt(check_login)
-
     user = get_current_user()
-    logger.info(f"[知识库] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
+    # 只在未登录时记录日志，避免正常使用时产生大量日志
+    if not user:
+        logger.debug(f"[知识库] 用户未登录")
     if user:
         from common.response import success_response
         return success_response(data={'user': user}, message='已登录')
@@ -355,6 +353,22 @@ def proxy_trilium_attachment(attachment_path):
 def test_check_login_page():
     """测试 check-login API 页面"""
     return render_template('test_check_login.html')
+
+
+
+
+# 限流豁免配置 - 必须在所有路由定义后执行
+# 使用延迟导入避免循环依赖
+try:
+    from app import limiter as app_limiter
+    if app_limiter:
+        # 豁免频繁调用的check-login端点
+        app_limiter.exempt(check_login)
+        print("[知识库系统] check-login端点已豁免限流")
+except ImportError:
+    print("[知识库系统] 无法导入limiter,跳过豁免配置")
+except Exception as e:
+    print(f"[知识库系统: 豁免限流配置失败: {str(e)}")
 
 
 

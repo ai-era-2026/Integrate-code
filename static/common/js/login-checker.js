@@ -8,7 +8,8 @@
 
     // 配置
     const CONFIG = {
-        checkInterval: 5000,  // 每5秒检查一次
+        checkInterval: 10000,  // 每10秒检查一次（从5秒改为10秒，减少日志）
+        debounceDelay: 3000,  // 防抖延迟3秒（从2秒改为3秒）
         checkOnVisibilityChange: true,  // 页面可见性改变时检查
         checkOnFocus: true,  // 页面获得焦点时检查
         loginUrl: '/user-mgmt/login',  // 默认登录页URL
@@ -18,6 +19,10 @@
             userMgmt: '/user-mgmt/check-login'
         }
     };
+
+    // 防抖控制
+    let lastCheckTime = 0;
+    let checkInProgress = false;
 
     // 当前系统类型
     const getCurrentSystem = function() {
@@ -41,21 +46,41 @@
             return;
         }
 
+        // 防抖检查：2秒内不重复请求
+        const now = Date.now();
+        if (now - lastCheckTime < CONFIG.debounceDelay && checkInProgress) {
+            console.log('Login check skipped (debounce), last check was', now - lastCheckTime, 'ms ago');
+            if (callback) callback(false); // 返回上一次的结果或默认值
+            return;
+        }
+
+        // 如果正在检查中，等待前一次请求完成
+        if (checkInProgress) {
+            console.log('Login check already in progress, skipping');
+            if (callback) callback(false);
+            return;
+        }
+
+        lastCheckTime = now;
+        checkInProgress = true;
+
         const checkUrl = CONFIG.apiEndpoints[system];
-        
+
         $.ajax({
             url: checkUrl,
             method: 'GET',
             cache: false,  // 禁用缓存
             success: function(response) {
+                checkInProgress = false;
                 const isLoggedIn = response.success && response.data && response.data.user;
                 const user = response.data ? response.data.user : null;
-                
+
                 if (callback) {
                     callback(isLoggedIn, user);
                 }
             },
             error: function(xhr) {
+                checkInProgress = false;
                 console.error('Login status check failed:', xhr);
                 // 检查失败时视为未登录
                 if (callback) {

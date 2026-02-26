@@ -183,13 +183,14 @@ swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
 # CSRF 保护 - 已禁用以避免登录问题
 
+
 # 请求速率限制
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["200 per day", "100 per hour"],  # 增加每小时的限制从50到100
     storage_uri="memory://"  # 生产环境可改为 Redis
 )
 limiter.init_app(app)

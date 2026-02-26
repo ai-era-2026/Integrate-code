@@ -108,8 +108,10 @@ def login():
 @case_bp.route('/api/logout', methods=['POST'])
 def logout():
     """登出"""
+    username = session.get('username', 'unknown')
     session.clear()
-    return success_response(message='登出成功')
+    logger.info(f"用户 {username} 退出登录")
+    return redirect('/case/')
 
 
 @case_bp.route('/auth/check-login')
@@ -139,42 +141,10 @@ def check_login():
                   type: object
                   description: 用户信息
     """
-    # 登录状态检查端点豁免限流（前端频繁调用）
-    from app import limiter
-    limiter.exempt(check_login)
-
     user = get_current_user()
-    logger.info(f"[工单系统] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
-    if user:
-        return success_response(data={'user': user}, message='已登录')
-    return unauthorized_response(message='未登录')
-    """检查登录状态
-
-    用于前端AJAX检查用户是否登录
-    ---
-    tags:
-      - 工单-认证
-    responses:
-      200:
-        description: 登录状态检查结果
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              description: 是否登录
-            message:
-              type: string
-              description: 响应消息
-            data:
-              type: object
-              properties:
-                user:
-                  type: object
-                  description: 用户信息
-    """
-    user = get_current_user()
-    logger.info(f"[工单系统] 检查登录状态, session keys: {list(session.keys())}, user: {user}")
+    # 只在未登录时记录日志，避免正常使用时产生大量日志
+    if not user:
+        logger.debug(f"[工单系统] 用户未登录")
     if user:
         return success_response(data={'user': user}, message='已登录')
     return unauthorized_response(message='未登录')
@@ -417,9 +387,9 @@ def create_ticket():
         user_username = session.get('username', '')
         user_email = session.get('email', '')
 
-        # 检查权限：只有 admin 和 user 角色可以创建工单
-        if user_role not in ['admin', 'user']:
-            return unauthorized_response(message='只有管理员和普通用户可以创建工单')
+        # 检查权限：admin、user 和 customer 角色都可以创建工单
+        if user_role not in ['admin', 'user', 'customer']:
+            return unauthorized_response(message='权限不足')
 
         required_fields = [
             'customer_name', 'customer_contact_phone', 'customer_email',
@@ -645,10 +615,9 @@ def get_tickets():
 
             # 根据角色添加基础条件
             if user_role == 'customer':
-                # 客户：显示联系人为该用户的所有工单
-                # 优先匹配 customer_contact（联系人的用户名），其次匹配 email
-                where_conditions.append("(customer_contact = %s OR customer_email = %s)")
-                params.extend([user_username, user_username])
+                # 客户：显示自己提交的所有工单
+                where_conditions.append("submit_user = %s")
+                params.append(user_username)
             elif user_role in ['admin', 'user']:
                 # 管理员/普通用户：显示所有工单（无需添加过滤条件）
                 pass
@@ -1330,3 +1299,19 @@ def admin_reports_page():
         return redirect('/case/?next=' + request.url)
 
     return render_template('case/admin_reports.html')
+
+
+
+
+# 限流豁免配置 - 必须在所有路由定义后执行
+# 使用延迟导入避免循环依赖
+try:
+    from app import limiter as app_limiter
+    if app_limiter:
+        # 豁免频繁调用的check-login端点
+        app_limiter.exempt(check_login)
+        print("[工单系统] check-login端点已豁免限流")
+except ImportError:
+    print("[工单系统] 无法导入limiter,跳过豁免配置")
+except Exception as e:
+    print(f"[工单系统] 豁免限流配置失败: {str(e)}")

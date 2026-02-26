@@ -352,19 +352,12 @@
         // 退出登录
         function logout() {
             if (confirm('确定要退出登录吗？')) {
-                fetch('/case/api/logout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.href = '/case/';
-                    }
-                })
-                .catch(() => {
-                    window.location.href = '/case/';
-                });
+                // 使用表单提交退出登录
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/case/api/logout';
+                document.body.appendChild(form);
+                form.submit();
             }
         }
 

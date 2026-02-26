@@ -138,13 +138,25 @@ def dashboard():
 @user_management_bp.route('/check-login')
 def check_login():
     """检查登录状态(用于AJAX检查)"""
-    # 登录状态检查端点豁免限流（前端频繁调用）
-    from app import limiter
-    limiter.exempt(check_login)
-
     user = get_current_user()
     if user and user.get('role') == 'admin':
         from common.response import success_response
         return success_response(data={'user': user}, message='已登录且是管理员')
     from common.response import unauthorized_response
     return unauthorized_response(message='未登录或不是管理员')
+
+
+
+
+# 限流豁免配置 - 必须在所有路由定义后执行
+# 使用延迟导入避免循环依赖
+try:
+    from app import limiter as app_limiter
+    if app_limiter:
+        # 豁免频繁调用的check-login端点
+        app_limiter.exempt(check_login)
+        print("[用户管理系统] check-login端点已豁免限流")
+except ImportError:
+    print("[用户管理系统] 无法导入limiter,跳过豁免配置")
+except Exception as e:
+    print(f"[用户管理系统: 豁免限流配置失败: {str(e)}")

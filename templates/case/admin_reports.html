@@ -321,7 +321,7 @@
                     <span>{{ session.get('display_name') or session.get('username') }}</span>
                     <span class="user-badge">{{ session.get('role') }}</span>
                 </div>
-                <a href="/case/logout" class="btn btn-sm btn-danger"><i class="fas fa-sign-out-alt"></i></a>
+                <button class="btn btn-sm btn-danger" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
             </div>
         </div>
     </nav>
@@ -659,6 +659,18 @@
             document.getElementById('startDate').value = '';
             document.getElementById('endDate').value = '';
             loadReports();
+        }
+
+        // 退出登录
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                // 使用表单提交退出登录
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/case/api/logout';
+                document.body.appendChild(form);
+                form.submit();
+            }
         }
     </script>
 </body>
