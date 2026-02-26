@@ -359,7 +359,7 @@ KB_SCHEMA = {
 # 用户输入验证模式
 USER_SCHEMA = {
     'username': {'type': str, 'required': True, 'max_length': 50, 'sanitize': sanitize_username},
-    'real_name': {'type': str, 'required': False, 'max_length': 100, 'sanitize': sanitize_text},
+    'display_name': {'type': str, 'required': False, 'max_length': 100, 'sanitize': sanitize_text},
     'email': {'type': str, 'required': False, 'max_length': 100, 'sanitize': sanitize_email},
     'password': {'type': str, 'required': True, 'min_length': 6, 'max_length': 100}
 }
@@ -473,22 +473,24 @@ def validate_password(password: str) -> tuple[bool, str]:
     return (True, '')
 
 
-def validate_user_data(data: Dict[str, Any]) -> tuple[bool, Dict[str, str]]:
+def validate_user_data(data: Dict[str, Any], skip_username_validation: bool = False) -> tuple[bool, Dict[str, str]]:
     """验证用户数据（兼容旧 API）
-    
+
     Args:
         data: 待验证的用户数据
-    
+        skip_username_validation: 是否跳过用户名验证（更新用户时）
+
     Returns:
         (is_valid, errors) 元组
     """
     errors = {}
-    
-    # 验证用户名
-    username = data.get('username')
-    is_valid, msg = validate_username(username)
-    if not is_valid:
-        errors['username'] = msg
+
+    # 验证用户名（如果需要）
+    if not skip_username_validation:
+        username = data.get('username')
+        is_valid, msg = validate_username(username)
+        if not is_valid:
+            errors['username'] = msg
     
     # 验证邮箱（如果提供）
     email = data.get('email')

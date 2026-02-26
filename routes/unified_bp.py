@@ -80,9 +80,6 @@ def add_user():
             display_name:
               type: string
               description: 显示名称
-            real_name:
-              type: string
-              description: 真实姓名
             email:
               type: string
               format: email
@@ -114,13 +111,17 @@ def add_user():
         if not data.get('username') or not data.get('password'):
             return error_response('用户名和密码不能为空', 400)
         
+        if not data.get('company_name'):
+            return error_response('公司名称不能为空', 400)
+        
         # 使用统一用户创建接口
         success, message = create_user(
             username=data['username'],
             password=data['password'],
             display_name=data.get('display_name'),
-            real_name=data.get('real_name'),
             email=data.get('email', ''),
+            phone=data.get('phone', ''),
+            company_name=data.get('company_name', ''),
             role=data.get('role', 'user'),
             created_by=session.get('username', 'admin')
         )
@@ -158,8 +159,6 @@ def update_user(user_id):
           type: object
           properties:
             display_name:
-              type: string
-            real_name:
               type: string
             role:
               type: string

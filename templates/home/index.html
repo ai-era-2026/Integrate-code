@@ -658,6 +658,17 @@
               </div>
             </div>
 
+            <!-- 公司名称 -->
+            <div>
+              <label style="display: block; color: #1a202c; font-weight: 600; margin-bottom: clamp(8px, 1.2vh, 12px); font-size: clamp(0.95rem, 1.15vw, 1.05rem);">
+                公司名称 <span style="color: #ef4444;">*</span>
+              </label>
+              <div style="position: relative;">
+                <input type="text" name="company_name" required style="width: 100%; box-sizing: border-box; padding: clamp(12px, 1.8vh, 16px) clamp(14px, 2.2vw, 18px) clamp(12px, 1.8vh, 16px) clamp(40px, 5.5vw, 52px); border: 2px solid #e5e7eb; border-radius: 12px; font-size: clamp(0.95rem, 1.15vw, 1.05rem); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none; background: #f9fafb;" placeholder="请输入您的公司名称">
+                <i class="fa fa-building" style="position: absolute; left: clamp(14px, 2.2vw, 18px); top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: clamp(16px, 2.2vw, 20px); transition: all 0.3s;"></i>
+              </div>
+            </div>
+
             <!-- 邮箱 -->
             <div>
               <label style="display: block; color: #1a202c; font-weight: 600; margin-bottom: clamp(8px, 1.2vh, 12px); font-size: clamp(0.95rem, 1.15vw, 1.05rem);">
@@ -666,6 +677,17 @@
               <div style="position: relative;">
                 <input type="email" name="email" required style="width: 100%; box-sizing: border-box; padding: clamp(12px, 1.8vh, 16px) clamp(14px, 2.2vw, 18px) clamp(12px, 1.8vh, 16px) clamp(40px, 5.5vw, 52px); border: 2px solid #e5e7eb; border-radius: 12px; font-size: clamp(0.95rem, 1.15vw, 1.05rem); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none; background: #f9fafb;" placeholder="请输入您的邮箱">
                 <i class="fa fa-envelope" style="position: absolute; left: clamp(14px, 2.2vw, 18px); top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: clamp(16px, 2.2vw, 20px); transition: all 0.3s;"></i>
+              </div>
+            </div>
+
+            <!-- 联系电话 -->
+            <div>
+              <label style="display: block; color: #1a202c; font-weight: 600; margin-bottom: clamp(8px, 1.2vh, 12px); font-size: clamp(0.95rem, 1.15vw, 1.05rem);">
+                联系电话
+              </label>
+              <div style="position: relative;">
+                <input type="tel" name="phone" style="width: 100%; box-sizing: border-box; padding: clamp(12px, 1.8vh, 16px) clamp(14px, 2.2vw, 18px) clamp(12px, 1.8vh, 16px) clamp(40px, 5.5vw, 52px); border: 2px solid #e5e7eb; border-radius: 12px; font-size: clamp(0.95rem, 1.15vw, 1.05rem); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none; background: #f9fafb;" placeholder="请输入您的联系电话">
+                <i class="fa fa-phone" style="position: absolute; left: clamp(14px, 2.2vw, 18px); top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: clamp(16px, 2.2vw, 20px); transition: all 0.3s;"></i>
               </div>
             </div>
 
@@ -765,19 +787,34 @@
 
       const formData = new FormData(this);
 
+      // 获取表单数据并打印到控制台
+      const name = formData.get('name');
+      const email = formData.get('email');
+      const phone = formData.get('phone');
+      const company_name = formData.get('company_name');
+      const message = formData.get('message');
+
+      console.log('提交数据:', { name, email, phone, company_name, message });
+
       fetch('/api/contact', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: formData.get('name'),
-          email: formData.get('email'),
-          message: formData.get('message')
+          name: name,
+          email: email,
+          phone: phone,
+          company_name: company_name,
+          message: message
         })
       })
-      .then(response => response.json())
+      .then(response => {
+        console.log('响应状态:', response.status);
+        return response.json();
+      })
       .then(data => {
+        console.log('响应数据:', data);
         submitContactBtn.textContent = originalText;
         submitContactBtn.disabled = false;
 
@@ -785,7 +822,10 @@
           alert('留言提交成功!我们会尽快与您联系。');
           contactForm.reset();
         } else {
-          alert('提交失败:' + data.message);
+          alert('提交失败: ' + data.message);
+          if (data.details && data.details.validation_errors) {
+            console.error('验证错误:', data.details.validation_errors);
+          }
         }
       })
       .catch(error => {

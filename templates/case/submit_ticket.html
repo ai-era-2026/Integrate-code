@@ -1,495 +1,637 @@
-{% extends "case/base.html" %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>提交工单 - 云户科技工单系统</title>
 
-{% block title %}提交工单 - 云户科技工单系统{% endblock %}
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
 
-{% block content %}
-<div class="container">
-  <div class="page-header">
-    <h1><i class="fa fa-ticket"></i> 提交工单</h1>
-    <p class="subtitle">请填写以下信息，我们将尽快为您处理</p>
-  </div>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  <div class="form-container">
-    <form id="ticketForm" class="ticket-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-      <!-- 客户信息 -->
-      <div class="form-section">
-        <h3><i class="fa fa-user"></i> 客户信息</h3>
-        <div class="form-group">
-          <label for="customerName">
-            <i class="fa fa-building"></i> 客户名称（公司） <span class="required">*</span>
-          </label>
-          <input type="text" id="customerName" name="customer_name" required
-                   placeholder="请输入客户公司名称">
-          <small class="form-text text-muted">请填写客户公司或机构名称</small>
+    <!-- 工单系统样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='case/css/ticket-system-v3.css') }}">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <img src="{{ url_for('static', filename='case/images/Logo.jpg') }}" alt="Logo" class="logo-img">
+                <span class="brand-text">工单管理系统</span>
+            </a>
+
+            <ul class="navbar-nav">
+                <li><a href="/case/submit" class="nav-link"><i class="fas fa-plus-circle"></i> 提交工单</a></li>
+                <li><a href="/case/my-tickets" class="nav-link"><i class="fas fa-list"></i> 我的工单</a></li>
+                {% if session.get('role') in ['admin', 'user'] %}
+                <li><a href="/case/admin/tickets" class="nav-link"><i class="fas fa-tasks"></i> 工单管理</a></li>
+                {% endif %}
+            </ul>
+
+            <div class="navbar-user">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span>{{ session.get('display_name') or session.get('username') }}</span>
+                    <span class="user-badge">{{ session.get('role') }}</span>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="showPasswordModal()">
+                    <i class="fas fa-key"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="customerContactName">
-              <i class="fa fa-user-circle"></i> 客户联系人 <span class="required">*</span>
-            </label>
-            <input type="text" id="customerContactName" name="customer_contact_name" required
-                   placeholder="请输入联系人姓名" value="{{ session.get('real_name', '') or session.get('username', '') }}" readonly>
-            <small class="form-text text-muted">当前登录用户：{{ session.get('real_name', '') or session.get('username', '') }}</small>
-          </div>
-          <div class="form-group">
-            <label for="customerContactPhone">
-              <i class="fa fa-phone"></i> 联系电话 <span class="required">*</span>
-            </label>
-            <input type="tel" id="customerContactPhone" name="customer_contact_phone" required
-                   placeholder="请输入联系电话">
-          </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-wrapper">
+        <div class="page-container">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-ticket"></i>
+                    提交工单
+                </div>
+                <div class="card-body">
+                    <form id="ticketForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                        <div class="row">
+                            <!-- 客户信息 -->
+                            <div class="col-12">
+                                <h4 style="margin-bottom: 20px; color: var(--primary-dark);">
+                                    <i class="fas fa-building"></i> 客户信息
+                                </h4>
+                            </div>
+
+                            {% if current_user.role == 'customer' %}
+                            <!-- 客户角色：自动填充自己的公司信息 -->
+                            <div class="col-12">
+                                <div class="form-group">
+                                    <label class="form-label">客户名称（公司）<span class="required">*</span></label>
+                                    <input type="text" class="form-control" name="customer_name" id="customerName"
+                                           placeholder="请输入客户公司或机构名称" required
+                                           value="{{ current_user.company_name }}"
+                                           readonly>
+                                    <div class="form-hint">自动填充当前登录用户的所属公司</div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <!-- 管理员和普通用户：可选择公司 -->
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">客户名称（公司）<span class="required">*</span></label>
+                                    <select class="form-select" name="customer_name" id="customerName" required>
+                                        <option value="">请选择客户公司</option>
+                                        {% for company in companies %}
+                                        <option value="{{ company }}">{{ company }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-hint">请选择客户公司</div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <hr style="margin: 30px 0; border-color: var(--gray-200);">
+
+                        <div class="row">
+                            <!-- 联系人信息 -->
+                            <div class="col-12">
+                                <h4 style="margin-bottom: 20px; color: var(--primary-dark);">
+                                    <i class="fas fa-address-card"></i> 联系人信息
+                                </h4>
+                            </div>
+
+                            {% if current_user.role == 'customer' %}
+                            <!-- 客户角色：自动填充自己的信息 -->
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">客户联系人<span class="required">*</span></label>
+                                    <input type="text" class="form-control" name="customer_contact_name" id="customerContactName"
+                                           placeholder="请输入联系人姓名" required readonly
+                                           value="{{ current_user.display_name }}">
+                                    <div class="form-hint">当前登录用户</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">联系电话<span class="required">*</span></label>
+                                    <input type="tel" class="form-control" name="customer_contact_phone" id="customerContactPhone"
+                                           placeholder="请输入联系电话" required
+                                           value="{{ current_user.phone }}">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">联系邮箱<span class="required">*</span></label>
+                                    <input type="email" class="form-control" name="customer_email" id="customerEmail"
+                                           placeholder="请输入联系邮箱" required
+                                           value="{{ current_user.email }}">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">抄送邮箱</label>
+                                    <input type="email" class="form-control" name="cc_email" id="ccEmail"
+                                           placeholder="请输入抄送邮箱（可选）">
+                                    <div class="form-hint">可填写多个邮箱，用英文逗号分隔</div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <!-- 管理员和普通用户：根据选择的公司显示联系人 -->
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">客户联系人<span class="required">*</span></label>
+                                    <select class="form-select" name="customer_contact_name" id="customerContactName" required>
+                                        <option value="">请先选择客户公司</option>
+                                    </select>
+                                    <div class="form-hint">根据选择的公司自动填充联系人信息</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">联系电话<span class="required">*</span></label>
+                                    <input type="tel" class="form-control" name="customer_contact_phone" id="customerContactPhone"
+                                           placeholder="请输入联系电话" required readonly>
+                                    <div class="form-hint">自动填充所选联系人的电话</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">联系邮箱<span class="required">*</span></label>
+                                    <input type="email" class="form-control" name="customer_email" id="customerEmail"
+                                           placeholder="请输入联系邮箱" required readonly>
+                                    <div class="form-hint">自动填充所选联系人的邮箱</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">抄送邮箱</label>
+                                    <input type="email" class="form-control" name="cc_email" id="ccEmail"
+                                           placeholder="请输入抄送邮箱（可选）">
+                                    <div class="form-hint">可填写多个邮箱，用英文逗号分隔</div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <hr style="margin: 30px 0; border-color: var(--gray-200);">
+
+                        <div class="row">
+                            <!-- 工单详情 -->
+                            <div class="col-12">
+                                <h4 style="margin-bottom: 20px; color: var(--primary-dark);">
+                                    <i class="fas fa-cog"></i> 工单详情
+                                </h4>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="form-label">工单类型<span class="required">*</span></label>
+                                    <select class="form-select" name="issue_type" id="issueType" required>
+                                        <option value="">请选择工单类型</option>
+                                        <option value="technical">技术支持</option>
+                                        <option value="service">产品咨询</option>
+                                        <option value="complaint">售后投诉</option>
+                                        <option value="other">其他问题</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="form-label">优先级<span class="required">*</span></label>
+                                    <select class="form-select" name="priority" id="priority" required>
+                                        <option value="">请选择优先级</option>
+                                        <option value="low">低</option>
+                                        <option value="medium">中</option>
+                                        <option value="high">高</option>
+                                        <option value="urgent">紧急</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="form-label">涉及产品</label>
+                                    <input type="text" class="form-control" name="product" id="product"
+                                           placeholder="请输入涉及的产品或服务（可选）">
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-group">
+                                    <label class="form-label">工单标题<span class="required">*</span></label>
+                                    <input type="text" class="form-control" name="title" id="title"
+                                           placeholder="请简要描述您的问题" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr style="margin: 30px 0; border-color: var(--gray-200);">
+
+                        <div class="row">
+                            <!-- 详细描述 -->
+                            <div class="col-12">
+                                <h4 style="margin-bottom: 20px; color: var(--primary-dark);">
+                                    <i class="fas fa-align-left"></i> 详细描述
+                                </h4>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-group">
+                                    <label class="form-label">问题详情<span class="required">*</span></label>
+                                    <textarea class="form-textarea" name="content" id="description" rows="8"
+                                              placeholder="请详细描述您遇到的问题或需求，包括：&#10;1. 具体表现&#10;2. 影响范围&#10;3. 重现步骤&#10;4. 其他相关信息" required></textarea>
+                                    <div class="form-hint">请提供尽可能详细的信息，有助于我们更快定位和解决问题</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr style="margin: 30px 0; border-color: var(--gray-200);">
+
+                        <div class="row">
+                            <!-- 附件上传 -->
+                            <div class="col-12">
+                                <h4 style="margin-bottom: 20px; color: var(--primary-dark);">
+                                    <i class="fas fa-paperclip"></i> 附件上传
+                                </h4>
+                            </div>
+
+                            <div class="col-12">
+                                <div id="uploadArea" style="border: 3px dashed var(--gray-300); border-radius: var(--radius-xl);
+                                    padding: 40px; text-align: center; background: var(--gray-50); cursor: pointer;
+                                    transition: var(--transition); position: relative; overflow: hidden; margin-bottom: 20px;">
+                                    <i class="fas fa-cloud-upload-alt" style="font-size: 48px; color: var(--primary); margin-bottom: 16px;"></i>
+                                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--gray-700);">点击或拖拽文件到此处上传</div>
+                                    <div style="color: var(--gray-500); margin-top: 8px;">支持：JPG, PNG, PDF, DOC, DOCX, TXT, ZIP</div>
+                                    <div style="color: var(--warning); font-weight: 500; margin-top: 4px;">单个文件最大 10MB</div>
+                                    <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,.zip,.rar"
+                                           style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1;">
+                                </div>
+                                <div id="fileList" style="margin-top: 20px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- 按钮区域 -->
+                        <div style="display: flex; justify-content: center; gap: 16px; margin-top: 40px;">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                                <i class="fas fa-paper-plane"></i>
+                                提交工单
+                            </button>
+                            <a href="/case/my-tickets" class="btn btn-secondary btn-lg">
+                                <i class="fas fa-list"></i>
+                                查看我的工单
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-          <label for="customerEmail">
-            <i class="fa fa-envelope"></i> 联系邮箱 <span class="required">*</span>
-          </label>
-          <input type="email" id="customerEmail" name="customer_email" required
-                 placeholder="请输入联系邮箱">
+    </div>
+
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="passwordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-key"></i> 修改密码</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm">
+                        <div class="form-group">
+                            <label class="form-label">旧密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="oldPassword" required placeholder="请输入当前密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="newPassword" required placeholder="请输入新密码（至少6位）" minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">确认新密码<span class="required">*</span></label>
+                            <input type="password" class="form-control" id="confirmPassword" required placeholder="请再次输入新密码" minlength="6">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="changePassword()">
+                        <i class="fas fa-save"></i> 保存修改
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
+    </div>
 
-      <!-- 工单信息 -->
-      <div class="form-section">
-        <h3><i class="fa fa-file-alt"></i> 工单信息</h3>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="ticketType">
-              <i class="fa fa-list"></i> 工单类型 <span class="required">*</span>
-            </label>
-            <select id="ticketType" name="issue_type" required>
-              <option value="">请选择工单类型</option>
-              <option value="technical">技术支持</option>
-              <option value="service">产品咨询</option>
-              <option value="complaint">售后投诉</option>
-              <option value="other">其他问题</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="priority">
-              <i class="fa fa-flag"></i> 优先级 <span class="required">*</span>
-            </label>
-            <select id="priority" name="priority" required>
-              <option value="">请选择优先级</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-              <option value="urgent">紧急</option>
-            </select>
-          </div>
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <h5>云户科技工单系统</h5>
+            <p>专业的客户服务支持平台</p>
+            <p>&copy; 2026 云户科技 版权所有</p>
+            <a href="/"><i class="fas fa-home"></i> 返回官网</a>
         </div>
-        <div class="form-group">
-          <label for="product">
-            <i class="fa fa-box"></i> 涉及产品
-          </label>
-          <input type="text" id="product" name="product"
-                 placeholder="请输入涉及的产品或服务（可选）">
-        </div>
-        <div class="form-group">
-          <label for="title">
-            <i class="fa fa-heading"></i> 工单标题 <span class="required">*</span>
-          </label>
-          <input type="text" id="title" name="title" required
-                 placeholder="请简要描述问题">
-        </div>
-        <div class="form-group">
-          <label for="description">
-            <i class="fa fa-align-left"></i> 详细描述 <span class="required">*</span>
-          </label>
-          <textarea id="description" name="content" rows="6" required
-                    placeholder="请详细描述您遇到的问题或需求，包括具体表现、影响范围等"></textarea>
-        </div>
-      </div>
+    </footer>
 
-      <!-- 附件上传 -->
-      <div class="form-section">
-        <h3><i class="fa fa-paperclip"></i> 附件上传</h3>
-        <div class="file-upload-area" id="fileUploadArea">
-          <i class="fa fa-cloud-upload-alt"></i>
-          <p>点击或拖拽文件到此处上传</p>
-          <p class="hint">支持格式：jpg, png, pdf, doc, docx, txt, zip（最大 10MB）</p>
-          <input type="file" id="fileInput" name="attachment" multiple
-                 accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,.zip,.rar">
-        </div>
-        <div id="fileList" class="file-list"></div>
-      </div>
+    <!-- Bootstrap JS -->
+    <script src="/static/case/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-      <!-- 提交按钮 -->
-      <div class="form-actions">
-        <button type="submit" id="submitBtn" class="btn btn-primary btn-large">
-          <i class="fa fa-paper-plane"></i> 提交工单
-        </button>
-        <a href="/case/my-tickets" class="btn btn-secondary">
-          <i class="fa fa-list"></i> 查看我的工单
-        </a>
-      </div>
-    </form>
-  </div>
-</div>
+    <!-- 统一登录检查 -->
+    <script src="{{ url_for('static', filename='case/js/unified-login-checker.js') }}?v=1.0"></script>
 
-<style>
-  .container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20px;
-  }
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
-  .page-header {
-    text-align: center;
-    margin-bottom: 40px;
-  }
+    <!-- 隐藏的数据元素 -->
+    <div id="companyUsersData" style="display: none;">{{ company_users | tojson | safe }}</div>
 
-  .page-header h1 {
-    font-size: 2.5rem;
-    color: #1a202c;
-    margin-bottom: 10px;
-  }
+    <script>
+        // 全局变量
+        let selectedFiles = [];
+        const socket = io('/', {
+            transports: ['websocket', 'polling'],
+            upgrade: false
+        });
 
-  .page-header h1 i {
-    color: #0A4DA2;
-    margin-right: 10px;
-  }
+        // 公司和用户数据（管理员和普通用户使用）
+        const companyUsersData = JSON.parse(document.getElementById('companyUsersData').textContent) || {};
 
-  .subtitle {
-    color: #6b7280;
-    font-size: 1.1rem;
-  }
+        // 文件上传
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
 
-  .form-container {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    padding: 40px;
-  }
+        // 客户公司选择和联系人填充（管理员和普通用户）
+        const customerNameSelect = document.getElementById('customerName');
+        const customerContactSelect = document.getElementById('customerContactName');
+        const customerContactPhoneInput = document.getElementById('customerContactPhone');
+        const customerEmailInput = document.getElementById('customerEmail');
 
-  .form-section {
-    margin-bottom: 30px;
-    padding-bottom: 30px;
-    border-bottom: 1px solid #e5e7eb;
-  }
+        if (customerNameSelect) {
+            customerNameSelect.addEventListener('change', function() {
+                const companyName = this.value;
+                updateContactOptions(companyName);
+            });
+        }
 
-  .form-section:last-child {
-    border-bottom: none;
-  }
+        function updateContactOptions(companyName) {
+            if (!companyName || !customerContactSelect) return;
 
-  .form-section h3 {
-    font-size: 1.3rem;
-    color: #1a202c;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-  }
+            // 清空联系人列表
+            customerContactSelect.innerHTML = '<option value="">请选择联系人</option>';
+            customerContactPhoneInput.value = '';
+            customerEmailInput.value = '';
 
-  .form-section h3 i {
-    color: #A2D93D;
-    margin-right: 10px;
-    width: 24px;
-  }
+            if (!companyUsersData[companyName]) return;
 
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
+            // 填充联系人列表
+            companyUsersData[companyName].forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.display_name;
+                option.textContent = user.display_name;
+                option.dataset.phone = user.phone || '';
+                option.dataset.email = user.email || '';
+                customerContactSelect.appendChild(option);
+            });
+        }
 
-  .form-group {
-    margin-bottom: 20px;
-  }
+        // 联系人选择时自动填充联系方式
+        if (customerContactSelect) {
+            customerContactSelect.addEventListener('change', function() {
+                const selectedOption = this.options[this.selectedIndex];
+                customerContactPhoneInput.value = selectedOption.dataset.phone || '';
+                customerEmailInput.value = selectedOption.dataset.email || '';
+            });
+        }
 
-  .form-group label {
-    display: block;
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: 8px;
-    font-size: 0.95rem;
-  }
+        // 拖拽事件
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'var(--primary)';
+            uploadArea.style.background = 'var(--primary-pale)';
+        });
 
-  .form-group label i {
-    color: #0A4DA2;
-    margin-right: 6px;
-    width: 16px;
-    text-align: center;
-  }
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'var(--gray-300)';
+            uploadArea.style.background = 'var(--gray-50)';
+        });
 
-  .form-group label .required {
-    color: #ef4444;
-    margin-left: 4px;
-  }
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'var(--gray-300)';
+            uploadArea.style.background = 'var(--gray-50)';
+            handleFiles(e.dataTransfer.files);
+        });
 
-  .form-group input[type="text"],
-  .form-group input[type="email"],
-  .form-group input[type="tel"],
-  .form-group select,
-  .form-group textarea {
-    width: 100%;
-    padding: 12px 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    transition: all 0.3s;
-    font-family: inherit;
-  }
+        // 文件选择
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
 
-  .form-group input:focus,
-  .form-group select:focus,
-  .form-group textarea:focus {
-    outline: none;
-    border-color: #0A4DA2;
-    box-shadow: 0 0 0 3px rgba(10, 77, 162, 0.1);
-  }
+        // 处理文件
+        function handleFiles(files) {
+            const maxSize = 10 * 1024 * 1024;
+            const allowedTypes = ['.jpg', '.jpeg', '.png', '.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'];
 
-  .form-group textarea {
-    resize: vertical;
-    min-height: 150px;
-    line-height: 1.6;
-  }
+            for (let file of files) {
+                if (file.size > maxSize) {
+                    alert('文件 "' + file.name + '" 超过 10MB 限制');
+                    continue;
+                }
 
-  .file-upload-area {
-    border: 2px dashed #d1d5db;
-    border-radius: 8px;
-    padding: 40px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s;
-    background: #f9fafb;
-  }
+                const ext = '.' + file.name.split('.').pop().toLowerCase();
+                if (!allowedTypes.includes(ext)) {
+                    alert('文件 "' + file.name + '" 格式不支持');
+                    continue;
+                }
 
-  .file-upload-area:hover {
-    border-color: #0A4DA2;
-    background: #eff6ff;
-  }
+                if (!selectedFiles.find(f => f.name === file.name)) {
+                    selectedFiles.push(file);
+                }
+            }
 
-  .file-upload-area i {
-    font-size: 3rem;
-    color: #6b7280;
-    margin-bottom: 15px;
-  }
+            updateFileList();
+        }
 
-  .file-upload-area p {
-    color: #6b7280;
-    margin: 5px 0;
-  }
+        // 更新文件列表
+        function updateFileList() {
+            if (selectedFiles.length === 0) {
+                fileList.innerHTML = '<div style="text-align: center; color: var(--gray-500); padding: 20px;">暂无附件</div>';
+                return;
+            }
 
-  .file-upload-area .hint {
-    font-size: 0.85rem;
-    color: #9ca3af;
-  }
+            fileList.innerHTML = selectedFiles.map((file, index) => {
+                const sizeKB = (file.size / 1024).toFixed(1);
+                return `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
+                        background: var(--gray-50); border-radius: var(--radius-lg); border: 1px solid var(--gray-200);
+                        margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <i class="fas fa-file" style="color: var(--primary);"></i>
+                            <span>${escapeHtml(file.name)}</span>
+                            <span style="color: var(--gray-500);">(${sizeKB} KB)</span>
+                        </div>
+                        <button type="button" onclick="removeFile(${index})"
+                                style="background: var(--danger-pale); color: var(--danger); border: 1px solid var(--danger-light);
+                                padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer;">
+                            <i class="fas fa-times"></i> 删除
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
 
-  .file-list {
-    margin-top: 20px;
-  }
+        // 删除文件
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+        }
 
-  .file-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 15px;
-    background: #f9fafb;
-    border-radius: 6px;
-    margin-bottom: 10px;
-    border: 1px solid #e5e7eb;
-  }
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-  .file-item .file-name {
-    flex: 1;
-    color: #374151;
-  }
+        // 表单提交
+        document.getElementById('ticketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-  .file-item .file-size {
-    color: #6b7280;
-    font-size: 0.9rem;
-    margin: 0 15px;
-  }
+            const form = e.target;
+            const formData = new FormData(form);
+            const submitBtn = document.getElementById('submitBtn');
 
-  .file-item .file-remove {
-    color: #ef4444;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: all 0.2s;
-  }
+            // 验证必填字段
+            const requiredFields = form.querySelectorAll('[required]');
+            let isValid = true;
+            requiredFields.forEach(field => {
+                if (!field.value.trim()) {
+                    isValid = false;
+                    field.style.borderColor = 'var(--danger)';
+                } else {
+                    field.style.borderColor = 'var(--gray-200)';
+                }
+            });
 
-  .file-item .file-remove:hover {
-    background: #fee2e2;
-  }
+            if (!isValid) {
+                alert('请填写所有必填字段');
+                return;
+            }
 
-  .form-actions {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-    margin-top: 30px;
-  }
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 提交中...';
 
-  .btn {
-    padding: 12px 32px;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
-  }
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
 
-  .btn i {
-    margin-right: 8px;
-  }
+            try {
+                const response = await fetch('/case/api/ticket', {
+                    method: 'POST',
+                    body: formData
+                });
 
-  .btn-primary {
-    background: linear-gradient(135deg, #0A4DA2, #2563eb);
-    color: white;
-  }
+                const result = await response.json();
 
-  .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(10, 77, 162, 0.3);
-  }
+                if (result.success) {
+                    alert('工单提交成功！\n\n工单编号：' + result.data.ticket_id);
+                    window.location.href = '/case/my-tickets';
+                } else {
+                    alert('提交失败：' + (result.message || '未知错误'));
+                }
+            } catch (error) {
+                console.error('提交错误:', error);
+                alert('提交失败，请检查网络连接');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> 提交工单';
+            }
+        });
 
-  .btn-secondary {
-    background: white;
-    color: #0A4DA2;
-    border: 2px solid #0A4DA2;
-  }
+        // 退出登录
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                // 使用表单提交退出登录
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/case/api/logout';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
 
-  .btn-secondary:hover {
-    background: #f0f9ff;
-  }
+        // 显示修改密码模态框
+        function showPasswordModal() {
+            new bootstrap.Modal(document.getElementById('passwordModal')).show();
+        }
 
-  @media (max-width: 768px) {
-    .form-row {
-      grid-template-columns: 1fr;
-      gap: 0;
-    }
+        // 修改密码
+        function changePassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
 
-    .form-actions {
-      flex-direction: column;
-    }
+            if (newPassword.length < 6) {
+                alert('新密码长度至少为6位');
+                return;
+            }
 
-    .btn {
-      width: 100%;
-      justify-content: center;
-    }
-  }
-</style>
-{% endblock %}
+            if (newPassword !== confirmPassword) {
+                alert('两次输入的新密码不一致');
+                return;
+            }
 
-{% block extra_js %}
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-<script>
-  const fileInput = document.getElementById('fileInput');
-  const fileUploadArea = document.getElementById('fileUploadArea');
-  const fileList = document.getElementById('fileList');
-  const ticketForm = document.getElementById('ticketForm');
-  const submitBtn = document.getElementById('submitBtn');
-  let selectedFiles = [];
+            if (oldPassword === newPassword) {
+                alert('新密码不能与旧密码相同');
+                return;
+            }
 
-  // 文件拖拽上传
-  fileUploadArea.addEventListener('click', () => fileInput.click());
+            fetch('/auth/api/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('密码修改成功！');
+                    document.getElementById('changePasswordForm').reset();
+                    bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+                } else {
+                    alert('密码修改失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('修改密码失败:', error);
+                alert('密码修改失败，请稍后重试');
+            });
+        }
 
-  fileUploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    fileUploadArea.style.borderColor = '#0A4DA2';
-    fileUploadArea.style.background = '#eff6ff';
-  });
+        // WebSocket事件
+        socket.on('ticket_update', (data) => {
+            console.log('工单更新:', data);
+        });
 
-  fileUploadArea.addEventListener('dragleave', () => {
-    fileUploadArea.style.borderColor = '#d1d5db';
-    fileUploadArea.style.background = '#f9fafb';
-  });
-
-  fileUploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    fileUploadArea.style.borderColor = '#d1d5db';
-    fileUploadArea.style.background = '#f9fafb';
-    handleFiles(e.dataTransfer.files);
-  });
-
-  fileInput.addEventListener('change', (e) => {
-    handleFiles(e.target.files);
-  });
-
-  function handleFiles(files) {
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    const allowedTypes = ['.jpg', '.jpeg', '.png', '.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'];
-
-    for (let file of files) {
-      if (file.size > maxSize) {
-        alert(`文件 ${file.name} 超过10MB限制`);
-        continue;
-      }
-
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
-      if (!allowedTypes.includes(ext)) {
-        alert(`文件 ${file.name} 格式不支持`);
-        continue;
-      }
-
-      if (!selectedFiles.find(f => f.name === file.name)) {
-        selectedFiles.push(file);
-      }
-    }
-    updateFileList();
-  }
-
-  function updateFileList() {
-    fileList.innerHTML = '';
-    selectedFiles.forEach((file, index) => {
-      const item = document.createElement('div');
-      item.className = 'file-item';
-      item.innerHTML = `
-        <span class="file-name">
-          <i class="fa fa-file"></i> ${file.name}
-        </span>
-        <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
-        <span class="file-remove" onclick="removeFile(${index})">
-          <i class="fa fa-times"></i>
-        </span>
-      `;
-      fileList.appendChild(item);
-    });
-  }
-
-  function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    updateFileList();
-  }
-
-  ticketForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const formData = new FormData(ticketForm);
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> 提交中...';
-    submitBtn.disabled = true;
-
-    // 添加文件
-    selectedFiles.forEach(file => {
-      formData.append('files', file);
-    });
-
-    try {
-      const response = await fetch('/case/api/ticket', {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert('工单提交成功！\n工单编号：' + result.data.ticket_id);
-        window.location.href = '/case/my-tickets';
-      } else {
-        alert('提交失败：' + result.message);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('提交失败，请稍后重试');
-    } finally {
-      submitBtn.innerHTML = originalText;
-      submitBtn.disabled = false;
-    }
-  });
-</script>
-{% endblock %}
+        socket.on('new_message', (data) => {
+            console.log('新消息:', data);
+        });
+    </script>
+</body>
+</html>

@@ -65,9 +65,9 @@ def login():
             session['role'] = user_info['role']
             session['login_time'] = datetime.now().isoformat()
             session.permanent = False
-            
-            logger.info(f"用户 {username} 登录成功")
-            
+
+            logger.info(f"用户 {username} 登录成功, 设置session: {list(session.keys())}")
+
             next_url = request.form.get('next')
             if next_url:
                 return redirect(next_url)
@@ -92,6 +92,9 @@ def logout():
 def check_login():
     """检查登录状态"""
     user = get_current_user()
+    # 只在未登录时记录日志，避免正常使用时产生大量日志
+    if not user:
+        logger.debug(f"[知识库] 用户未登录")
     if user:
         from common.response import success_response
         return success_response(data={'user': user}, message='已登录')
@@ -345,41 +348,27 @@ def proxy_trilium_attachment(attachment_path):
         return Response(f'Failed to proxy attachment: {str(e)}', status=500)
 
 
-@kb_bp.route('/auth/users')
-@login_required(roles=['admin'])
-def user_management():
-    """用户管理页面"""
-    try:
-        from common.database_context import db_connection
-        from common.logger import log_exception
+@kb_bp.route('/test-check-login')
+@login_required()
+def test_check_login_page():
+    """测试 check-login API 页面"""
+    return render_template('test_check_login.html')
 
-        with db_connection('kb') as conn:
-            cursor = conn.cursor()
 
-            # 获取用户列表
-            cursor.execute("SELECT * FROM `users` ORDER BY created_at DESC")
-            users = cursor.fetchall()
 
-            # 获取最近登录日志
-            cursor.execute("""
-                SELECT l.*, u.username, u.display_name
-                FROM mgmt_login_logs l
-                LEFT JOIN `users` u ON l.user_id = u.id
-                ORDER BY l.login_time DESC
-                LIMIT 20
-            """)
-            login_logs = cursor.fetchall()
 
-            return render_template('kb/user_management.html', users=users,
-                                 login_logs=login_logs,
-                                 total_count=len(users) if users else 0)
-    except Exception as e:
-        from common.logger import log_exception
-        log_exception(logger, "加载知识库用户管理页面失败")
-        return render_template('kb/user_management.html', users=[],
-                             login_logs=[],
-                             error=str(e),
-                             total_count=0)
+# 限流豁免配置 - 必须在所有路由定义后执行
+# 使用延迟导入避免循环依赖
+try:
+    from app import limiter as app_limiter
+    if app_limiter:
+        # 豁免频繁调用的check-login端点
+        app_limiter.exempt(check_login)
+        print("[知识库系统] check-login端点已豁免限流")
+except ImportError:
+    print("[知识库系统] 无法导入limiter,跳过豁免配置")
+except Exception as e:
+    print(f"[知识库系统: 豁免限流配置失败: {str(e)}")
 
 
 
