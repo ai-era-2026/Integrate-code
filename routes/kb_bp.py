@@ -15,6 +15,14 @@ import config
 kb_bp = Blueprint('kb', __name__, url_prefix='/kb')
 
 
+def check_force_password_change():
+    """检查是否需要强制修改密码"""
+    if session.get('force_password_change', False):
+        logger.warning("用户需要强制修改密码，拒绝访问")
+        return True
+    return False
+
+
 @kb_bp.route('/auth/login', methods=['GET', 'POST'])
 def login():
     """知识库系统登录
@@ -64,9 +72,15 @@ def login():
             session['display_name'] = user_info['display_name']
             session['role'] = user_info['role']
             session['login_time'] = datetime.now().isoformat()
+            session['force_password_change'] = user_info.get('force_password_change', False)
             session.permanent = False
 
-            logger.info(f"用户 {username} 登录成功, 设置session: {list(session.keys())}")
+            logger.info(f"用户 {username} 登录成功, 设置session: {list(session.keys())}, 强制修改密码: {user_info.get('force_password_change', False)}")
+
+            # 检查是否需要强制修改密码
+            if user_info.get('force_password_change', False):
+                logger.info(f"用户 {username} 需要强制修改密码, 跳转到修改密码页面")
+                return redirect(url_for('kb.change_password'))
 
             next_url = request.form.get('next')
             if next_url:
@@ -75,8 +89,90 @@ def login():
         else:
             logger.warning(f"用户 {username} 登录失败: {result}")
             return render_template('kb/login.html', error=result, username=username)
-    
+
     return render_template('kb/login.html')
+
+
+@kb_bp.route('/auth/change-password', methods=['GET', 'POST'])
+@login_required()
+def change_password():
+    """修改密码页面"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('kb.login'))
+
+    # 检查是否需要强制修改密码
+    force_password_change = session.get('force_password_change', False)
+
+    if request.method == 'POST':
+        from common.unified_auth import update_user_password
+        from werkzeug.security import check_password_hash
+        from common.db_manager import get_connection
+
+        old_password = request.form.get('old_password', '').strip()
+        new_password = request.form.get('new_password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+
+        logger.info(f"修改密码请求 - 用户: {user['username']}, 旧密码长度: {len(old_password)}, 新密码长度: {len(new_password)}, 确认密码长度: {len(confirm_password)}")
+
+        # 简单验证
+        if not old_password or not new_password:
+            logger.warning("修改密码失败: 请输入旧密码和新密码")
+            return render_template('kb/change_password.html', error='请输入旧密码和新密码', force_password_change=force_password_change)
+        if not confirm_password:
+            logger.warning("修改密码失败: 请确认新密码")
+            return render_template('kb/change_password.html', error='请确认新密码', force_password_change=force_password_change)
+        if len(new_password) < 6:
+            logger.warning("修改密码失败: 新密码长度至少为6位")
+            return render_template('kb/change_password.html', error='新密码长度至少为6位', force_password_change=force_password_change)
+        if new_password != confirm_password:
+            logger.warning("修改密码失败: 两次输入的新密码不一致")
+            return render_template('kb/change_password.html', error='两次输入的新密码不一致', force_password_change=force_password_change)
+
+        # 验证旧密码 - 直接从数据库查询,不调用authenticate_user
+        conn = get_connection('kb')
+        if conn:
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT password_hash FROM `users` WHERE id = %s", (user['id'],))
+                    result = cursor.fetchone()
+                    if result:
+                        password_hash = result[0] if isinstance(result, tuple) else result.get('password_hash')
+
+                        # 验证旧密码
+                        if not check_password_hash(password_hash, old_password):
+                            logger.warning(f"修改密码失败: 旧密码密码错误")
+                            return render_template('kb/change_password.html', error='旧密码错误', force_password_change=force_password_change)
+                        logger.info("旧密码验证通过")
+            finally:
+                conn.close()
+
+        # 更新新密码
+        success, message = update_user_password(user['id'], new_password)
+        if success:
+            # 清除强制修改密码标记
+            session.pop('force_password_change', None)
+            # 清除force_password_change字段
+            conn = get_connection('kb')
+            if conn:
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("UPDATE `users` SET force_password_change = 0 WHERE id = %s", (user['id'],))
+                        conn.commit()
+                        logger.info(f"用户 {user['username']} 清除强制修改密码标记")
+                finally:
+                    conn.close()
+
+            logger.info(f"用户 {user['username']} 修改密码成功")
+            # 修改密码成功后跳转到首页
+            return redirect(url_for('kb.index'))
+        else:
+            logger.error(f"修改密码失败: {message}")
+            return render_template('kb/change_password.html', error=message, force_password_change=force_password_change)
+
+    return render_template('kb/change_password.html', force_password_change=force_password_change)
+
+
 
 
 @kb_bp.route('/auth/logout')
@@ -106,6 +202,10 @@ def check_login():
 @login_required()
 def index():
     """知识库首页"""
+    # 检查是否需要强制修改密码
+    if check_force_password_change():
+        return redirect(url_for('kb.change_password'))
+
     user = get_current_user()
     try:
         page = request.args.get('page', 1, type=int)
@@ -151,6 +251,10 @@ def index():
 @kb_bp.route('/search', methods=['GET'])
 @login_required()
 def search():
+    """知识库搜索页面"""
+    # 检查是否需要强制修改密码
+    if check_force_password_change():
+        return redirect(url_for('kb.change_password'))
     """搜索知识库"""
     search_id = request.args.get('id', '').strip()
     page = request.args.get('page', 1, type=int)

@@ -11,16 +11,19 @@
 
 ```
 database/
-├── README.md                      # 本文档
-├── init_database.sql              # 完整初始化脚本 v2.2 (新建环境,已包含所有补丁)
-├── patches/                       # 补丁脚本目录(用于旧版本升级)
-│   ├── v2.1_to_v2.2/             # 版本2.1升级到2.2
-│   │   ├── 001_add_missing_columns.sql
-│   │   ├── 002_extend_kb_name_length.sql
-│   │   └── README.md
-│   └── v2.2_to_v2.3/             # 版本2.2升级到2.3(预留)
-│       └── README.md
-└── legacy/                        # 旧版脚本(已废弃)
+├── README.md                           # 本文档
+├── INIT_DATABASE_GUIDE.md              # 数据库初始化指南
+├── init_database.sql                   # 完整初始化脚本 v2.0 (新建环境,已包含所有补丁)
+├── init_database.bat                   # Windows自动化Windows自动化初始化脚本
+├── init_database.sh                    # Linux/macOS自动化初始化脚本
+├── patches/                            # 补丁脚本目录(用于旧版本升级)
+│   ├── UPGRADE_v2.0_README.md          # v2.0升级指南
+│   ├── upgrade_v2.0_integration.sql    # 整合版补丁脚本(v2.1-v2.5)
+│   ├── apply_upgrade_v2.0.bat          # Windows自动化升级脚本
+│   └── apply_upgrade_v2.0.sh           # Linux/macOS自动化升级脚本
+├── upgrade_case_v2.8.sql               # 可选: 工单满意度评价表(v2.8)
+├── upgrade_case_v2.9_force_password_change.sql  # 可选: 强制修改密码(v2.9)
+└── legacy/                             # 旧版脚本(已废弃)
     ├── migrate_case_db.sql
     ├── patch_kb_name_length.sql
     └── README_KB_NAME_PATCH.md
@@ -35,31 +38,40 @@ database/
 **执行方式:**
 
 ```bash
-# 方式1: MySQL客户端
-mysql -h localhost -u root -p < database/init_database.sql
+# 方式1: 使用自动化脚本(推荐)
+# Windows:
+cd database
+init_database.bat root
 
-# 方式2: 登录后执行
-mysql -h localhost -u root -p
-mysql> source /path/to/database/init_database.sql
+# Linux/macOS:
+cd database
+chmod +x init_database.sh
+./init_database.sh root
+
+# 方式2: MySQL客户端
+mysql -h localhost -u root -p < database/init_database.sql
 ```
+
+**详细说明:** 参见 `INIT_DATABASE_GUIDE.md`
 
 **注意事项:**
 - 此脚本会创建三个新数据库
 - 包含完整的表结构和初始数据
 - 默认管理员账号: `admin` / `YHKB@2024`
-- **版本 v2.2 已包含所有补丁内容，无需额外执行补丁脚本**
+- **版本 v2.0 已包含所有补丁内容，无需额外执行补丁脚本**
+- 包含强制修改密码功能(`force_password_change`字段)
 
 ### 场景2: 升级现有数据库(已部署环境)
 
-使用 `patches/` 目录下的补丁脚本升级现有数据库。
+使用 `patches/` 目录下的整合补丁脚本升级现有数据库。
 
 **版本历史:**
 
-- **v2.0** (初始版本): 基础数据库结构
-- **v2.1** (旧版本): 包含统一用户管理和工单系统
-- **v2.2** (当前版本): 已合并所有补丁，包含完整字段和索引
-  - 工单表新增: assignee, resolution, submit_user, customer_contact_name
+- **v2.0** (当前版本): 整合版补丁，包含 v2.1-v2.5 的所有变更
+  - 工单表新增: assignee, resolution, submit_user, customer_contact_name, cc_emails
   - 知识库名称字段长度: VARCHAR(500)
+  - 用户表新增: display_name, company_name, phone, force_password_change
+  - 删除废弃字段: password_md5, real_name
 
 **升级步骤:**
 
@@ -68,54 +80,70 @@ mysql> source /path/to/database/init_database.sql
 mysqldump -h localhost -u root -p \
   --databases clouddoors_db YHKB casedb > backup_$(date +%Y%m%d).sql
 
-# 2. 依次执行补丁脚本
-mysql -h localhost -u root -p < database/patches/v2.1_to_v2.2/001_add_missing_columns.sql
-mysql -h localhost -u root -p < database/patches/v2.1_to_v2.2/002_extend_kb_name_length.sql
+# 2. 执行整合版补丁脚本
+# Windows:
+cd database/patches
+apply_upgrade_v2.0.bat root
 
-# 3. 验证升级结果
-# (见各补丁README中的验证步骤)
+# Linux/macOS:
+cd database/patches
+chmod +x apply_upgrade_v2.0.sh
+./apply_upgrade_v2.0.sh root
+
+# 方式2: 直接执行SQL
+mysql -h localhost -u root -p < database/patches/upgrade_v2.0_integration.sql
+
+# 3. 验证升级结果(见升级指南)
 ```
+
+**详细说明:** 参见 `patches/UPGRADE_v2.0_README.md`
 
 **注意事项:**
 - 升级前务必备份数据
-- 按版本顺序执行补丁
-- 每个补丁都是幂等的,可重复执行
+- 整合补丁脚本已包含 v2.1-v2.5 所有补丁，一次性执行即可
+- 补丁是幂等的,可重复执行
 
-### 场景3: 部分补丁修复
+### 场景3: 可选补丁
 
-如果只需要应用某个特定补丁,可以直接执行对应的SQL文件。
+以下补丁不在整合版 v2.0 中，需要单独执行:
+
+**v2.8 - 工单满意度评价表:**
 
 ```bash
-# 仅修复工单系统缺少字段的问题
-mysql -h localhost -u root -p casedb < database/patches/v2.1_to_v2.2/001_add_missing_columns.sql
-
-# 仅扩展知识库名称长度
-mysql -h localhost -u root -p YHKB < database/patches/v2.1_to_v2.2/002_extend_kb_name_length.sql
+mysql -h localhost -u root -p casedb < database/upgrade_case_v2.8.sql
 ```
+
+**v2.9 - 强制修改密码字段:**
+> 注意: 此补丁已整合到 v2.0 版本，新系统无需单独执行
+
+### 场景4: 部分补丁修复
+
+如果只需要应用某个特定补丁,可以直接手动修改SQL文件或执行特定部分。
 
 ## 补丁脚本说明
 
-### v2.1_to_v2.2 升级包
+### v2.0 整合版升级包
 
-**⚠️ 重要提示**: `init_database.sql` 已升级到 v2.2 版本，包含本升级包的所有内容。
+**⚠️ 重要提示**: `init_database.sql` 已升级到 v2.0 版本，包含本升级包的所有内容。
 - **全新安装**: 直接使用 `init_database.sql` 即可，无需执行补丁
-- **从 v2.1 升级**: 需要执行以下补丁脚本
+- **从旧版本升级**: 需要执行 `patches/upgrade_v2.0_integration.sql`
 
 **包含补丁:**
 
-1. **001_add_missing_columns.sql**
-   - 数据库: `casedb`
-   - 功能: 添加工单系统缺失的字段(assignee, resolution, submit_user, customer_contact_name)
-   - 影响: 修改 `tickets` 表结构,不影响现有数据
-   - 预计耗时: < 1秒
+1. **知识库系统 (YHKB):**
+   - 扩展 `KB_Name` 字段长度到 VARCHAR(500)
+   - 删除废弃字段: `password_md5`, `real_name`
+   - 添加新字段: `display_name`, `company_name`, `phone`, `force_password_change`
+   - 在 `mgmt_login_logs` 表添加 `display_name` 字段
 
-2. **002_extend_kb_name_length.sql**
-   - 数据库: `YHKB`
-   - 功能: 扩展 `KB_Name` 字段长度从 VARCHAR(200) 到 VARCHAR(500)
-   - 影响: 修改 `KB-info` 表结构,不影响现有数据
-   - 预计耗时: < 1秒
+2. **工单系统 (casedb):**
+   - 添加 `assignee` 字段(处理人)
+   - 添加 `resolution` 字段(解决方案)
+   - 添加 `submit_user` 字段(提交用户)
+   - 添加 `customer_contact_name` 字段(联系人姓名)
+   - 添加 `cc_emails` 字段(抄送邮箱)
 
-详细说明见各补丁目录下的 `README.md`。
+详细说明见 `patches/UPGRADE_v2.0_README.md`。
 
 ## 数据库结构概览
 
@@ -136,6 +164,7 @@ mysql -h localhost -u root -p YHKB < database/patches/v2.1_to_v2.2/002_extend_kb
 **表结构:**
 - `tickets` - 工单表
 - `messages` - 工单聊天消息表
+- `satisfaction` - 工单满意度评价表 (可选，v2.8)
 
 **重要:**
 - `casedb.users` 表已废弃,统一使用 `YHKB.users` 表
@@ -254,6 +283,6 @@ mysql -h localhost -u root -p YHKB < backup_yhkb_20260213.sql
 
 ---
 
-**最后更新**: 2026-02-13
+**最后更新**: 2026-02-27
 **维护人员**: 云户科技技术团队
-**文档版本**: 1.0
+**文档版本**: 2.0

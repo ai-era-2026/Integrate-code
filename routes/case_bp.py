@@ -13,6 +13,14 @@ import pymysql
 case_bp = Blueprint('case', __name__, url_prefix='/case')
 
 
+def check_force_password_change():
+    """检查是否需要强制修改密码"""
+    if session.get('force_password_change', False):
+        logger.warning("[工单系统] 用户需要强制修改密码，拒绝访问")
+        return True
+    return False
+
+
 def generate_ticket_id():
     """生成唯一工单ID"""
     now = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -84,7 +92,7 @@ def login():
         
         if not success:
             return unauthorized_response(message=result)
-        
+
         user_info = result
 
         session['user_id'] = user_info['id']
@@ -92,13 +100,15 @@ def login():
         session['role'] = user_info['role']
         session['display_name'] = user_info.get('display_name', '')
         session['login_time'] = datetime.now().isoformat()
+        session['force_password_change'] = user_info.get('force_password_change', False)
         session.permanent = False
 
         return success_response(data={
             'user_id': user_info['id'],
             'username': user_info['username'],
             'display_name': user_info.get('display_name', ''),
-            'role': user_info['role']
+            'role': user_info['role'],
+            'force_password_change': user_info.get('force_password_change', False)
         }, message='登录成功')
     except Exception as e:
         log_exception(logger, "登录失败")
@@ -799,6 +809,10 @@ def get_messages(ticket_id):
 @case_bp.route('/submit', methods=['GET'])
 def submit_ticket_page():
     """工单提交页面"""
+    # 检查是否需要强制修改密码
+    if check_force_password_change():
+        return redirect('/kb/auth/change-password')
+
     user_id = session.get('user_id')
     logger.info(f"[工单系统] 访问提交页面, session keys: {list(session.keys())}, user_id: {user_id}")
 
@@ -865,6 +879,10 @@ def submit_ticket_page():
 @case_bp.route('/my-tickets', methods=['GET'])
 def my_tickets_page():
     """我的工单列表页面"""
+    # 检查是否需要强制修改密码
+    if check_force_password_change():
+        return redirect('/kb/auth/change-password')
+
     user_id = session.get('user_id')
     logger.info(f"[工单系统] 访问我的工单页面, session keys: {list(session.keys())}, user_id: {user_id}")
 

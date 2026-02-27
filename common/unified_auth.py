@@ -21,7 +21,7 @@ def authenticate_user(username, password):
         with conn.cursor() as cursor:
             # 查询用户信息 - 支持用户名或邮箱登录
             sql = """
-            SELECT id, username, password_hash, display_name, role, status, login_attempts
+            SELECT id, username, password_hash, display_name, role, status, login_attempts, last_login, force_password_change
             FROM `users`
             WHERE (username = %s OR email = %s) AND status = 'active'
             """
@@ -44,10 +44,12 @@ def authenticate_user(username, password):
                 display_name_val = user.get('display_name')
                 role_val = user.get('role')
                 login_attempts = user.get('login_attempts', 0)
+                last_login_val = user.get('last_login')
+                force_password_change_val = user.get('force_password_change', 0)
             else:
                 # 元组类型（普通cursor）
-                # 字段索引: 0=id, 1=username, 2=password_hash, 3=display_name, 4=role, 5=status, 6=login_attempts
-                user_id, user_name, pwd_hash, disp_name, user_role, user_status, attempts = user
+                # 字段索引: 0=id, 1=username, 2=password_hash, 3=display_name, 4=role, 5=status, 6=login_attempts, 7=last_login, 8=force_password_change
+                user_id, user_name, pwd_hash, disp_name, user_role, user_status, attempts, last_login_val, force_password_change_val = user
 
                 if pwd_hash:
                     password_valid = check_password_hash(pwd_hash, password)
@@ -97,7 +99,8 @@ def authenticate_user(username, password):
                     'id': user_id,
                     'username': username,
                     'display_name': display_name,
-                    'role': role_val
+                    'role': role_val,
+                    'force_password_change': force_password_change_val == 1
                 }
                 return True, user_info
             else:
@@ -182,10 +185,13 @@ def login_required(roles=None):
     return decorator
 
 
-def create_user(username, password, display_name=None, email=None, phone=None, company_name=None, role='user', created_by='admin'):
+def create_user(username, password, display_name=None, email=None, phone=None, company_name=None, role='user', created_by='admin', force_password_change=False):
     """
     创建新用户（统一接口）
     统一使用 werkzeug 密码加密
+    
+    参数:
+        force_password_change: 是否强制修改密码，默认为False
     """
     conn = get_connection('kb')
     if conn is None:
@@ -203,7 +209,7 @@ def create_user(username, password, display_name=None, email=None, phone=None, c
 
             # 插入用户
             insert_sql = """
-            INSERT INTO `users` (username, password_hash, password_type, display_name, email, phone, role, status, system, created_by, company_name)
+            INSERT INTO `users` (username, password_hash, password_type, display_name, email, phone, role, status, system, created_by, company_name, force_password_change)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(insert_sql, (
@@ -217,7 +223,8 @@ def create_user(username, password, display_name=None, email=None, phone=None, c
                 'active',
                 'unified',
                 created_by,
-                company_name
+                company_name,
+                1 if force_password_change else 0
             ))
             conn.commit()
 
