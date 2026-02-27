@@ -281,47 +281,77 @@
             });
 
             // 密码显示/隐藏切换功能
-            document.getElementById('toggleOldPassword').addEventListener('click', function() {
-                const input = document.getElementById('oldPassword');
-                const icon = this.querySelector('i');
-                if (input.type === 'password') {
-                    input.type = 'text';
-                    icon.classList.remove('fa-eye');
-                    icon.classList.add('fa-eye-slash');
-                } else {
-                    input.type = 'password';
-                    icon.classList.remove('fa-eye-slash');
-                    icon.classList.add('fa-eye');
-                }
-            });
+            function setupPasswordToggle(toggleId, inputId) {
+                const toggleBtn = document.getElementById(toggleId);
+                const input = document.getElementById(inputId);
 
-            document.getElementById('toggleNewPassword').addEventListener('click', function() {
-                const input = document.getElementById('newPassword');
-                const icon = this.querySelector('i');
-                if (input.type === 'password') {
-                    input.type = 'text';
-                    icon.classList.remove('fa-eye');
-                    icon.classList.add('fa-eye-slash');
-                } else {
-                    input.type = 'password';
-                    icon.classList.remove('fa-eye-slash');
-                    icon.classList.add('fa-eye');
-                }
-            });
+                toggleBtn.addEventListener('click', function() {
+                    const icon = this.querySelector('i');
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                        // 3秒后自动隐藏密码
+                        setTimeout(() => {
+                            if (input.type === 'text') {
+                                input.type = 'password';
+                                icon.classList.remove('fa-eye-slash');
+                                icon.classList.add('fa-eye');
+                            }
+                        }, 3000);
+                    } else {
+                        input.type = 'password';
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    }
+                });
+            }
 
-            document.getElementById('toggleConfirmPassword').addEventListener('click', function() {
-                const input = document.getElementById('confirmPassword');
-                const icon = this.querySelector('i');
-                if (input.type === 'password') {
-                    input.type = 'text';
-                    icon.classList.remove('fa-eye');
-                    icon.classList.add('fa-eye-slash');
-                } else {
-                    input.type = 'password';
-                    icon.classList.remove('fa-eye-slash');
-                    icon.classList.add('fa-eye');
-                }
-            });
+            // 为三个密码输入框设置显示/隐藏功能
+            setupPasswordToggle('toggleOldPassword', 'oldPassword');
+            setupPasswordToggle('toggleNewPassword', 'newPassword');
+            setupPasswordToggle('toggleConfirmPassword', 'confirmPassword');
+
+            // 重置密码显示状态函数
+            function resetPasswordVisibility() {
+                const passwordFields = [
+                    { input: 'oldPassword', toggle: 'toggleOldPassword' },
+                    { input: 'newPassword', toggle: 'toggleNewPassword' },
+                    { input: 'confirmPassword', toggle: 'toggleConfirmPassword' }
+                ];
+
+                passwordFields.forEach(field => {
+                    const input = document.getElementById(field.input);
+                    const toggle = document.getElementById(field.toggle);
+                    const icon = toggle.querySelector('i');
+
+                    // 重置为密码类型
+                    if (input.type === 'text') {
+                        input.type = 'password';
+                    }
+                    // 重置图标
+                    if (icon) {
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    }
+                });
+            }
+
+            // 监听模态框事件
+            const passwordModal = document.getElementById('changePasswordModal');
+            if (passwordModal) {
+                // 模态框打开时重置状态
+                passwordModal.addEventListener('show.bs.modal', function() {
+                    resetPasswordVisibility();
+                    document.getElementById('changePasswordForm').reset();
+                });
+
+                // 模态框关闭时重置状态
+                passwordModal.addEventListener('hidden.bs.modal', function() {
+                    resetPasswordVisibility();
+                    document.getElementById('changePasswordForm').reset();
+                });
+            }
 
             // 修改密码功能
             document.getElementById('submitChangePassword').addEventListener('click', function() {
