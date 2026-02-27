@@ -3,11 +3,13 @@
 支持发送邮件到企业微信邮箱
 """
 import smtplib
+import socket
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.utils import formataddr
 import logging
+import time
 from config import (
     MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT,
     MAIL_DEFAULT_SENDER, CONTACT_EMAIL
@@ -37,6 +39,21 @@ class EmailService:
             logger.warning(f"MAIL_USERNAME: {self.smtp_username}")
             logger.warning(f"MAIL_PASSWORD: {'已配置' if self.smtp_password else '未配置'}")
             logger.warning(f"MAIL_DEFAULT_SENDER: {self.email_sender}")
+
+        # 如果使用域名而不是IP，给出提示
+        if not self._is_valid_ip(self.smtp_server):
+            logger.info(f"提示: 邮件服务器使用域名 {self.smtp_server}")
+            logger.info(f"如果遇到DNS解析问题，可以使用IP地址：")
+            logger.info(f"  运行: python3 scripts/get_smtp_ip.py 获取IP地址")
+            logger.info(f"  然后在 .env 中设置: MAIL_SERVER=<IP地址>")
+
+    def _is_valid_ip(self, address):
+        """检查是否是有效的IP地址"""
+        try:
+            socket.inet_pton(socket.AF_INET, address)
+            return True
+        except socket.error:
+            return False
     
     def _create_message(
         self, 
@@ -96,7 +113,7 @@ class EmailService:
     ) -> tuple[bool, str]:
         """
         发送邮件
-        
+
         Args:
             to_email: 收件人邮箱
             subject: 邮件主题
@@ -104,11 +121,17 @@ class EmailService:
             is_html: 是否HTML格式
             cc_emails: 抄送邮箱列表
             attachments: 附件列表，每个附件为 {'filename': 文件名, 'content': 文件内容}
-        
+
         Returns:
             (success: bool, message: str)
         """
         try:
+            # 检查邮件配置
+            if not all([self.smtp_server, self.smtp_username, self.smtp_password]):
+                error_msg = "邮件配置不完整，请检查 MAIL_SERVER, MAIL_USERNAME, MAIL_PASSWORD"
+                logger.error(error_msg)
+                return False, error_msg
+
             # 创建邮件消息
             msg = self._create_message(
                 to_email=to_email,
@@ -119,42 +142,97 @@ class EmailService:
                 attachments=attachments
             )
 
-            # 连接SMTP服务器并发送（设置30秒超时）
+            # 连接SMTP服务器并发送
             # 企业微信邮箱配置：
             # - 发送服务器：smtp.exmail.qq.com (SSL, 端口 465)
             # - 使用 SMTP_SSL 连接
-            if self.smtp_port == 465:
-                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, timeout=30) as server:
-                    logger.info(f"使用 SMTP_SSL 连接到 {self.smtp_server}:{self.smtp_port}")
-                    server.login(self.smtp_username, self.smtp_password)
-                    server.send_message(msg)
-                    server.quit()
-            else:
-                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
-                    logger.info(f"使用 SMTP 连接到 {self.smtp_server}:{self.smtp_port}")
-                    server.starttls()
-                    server.login(self.smtp_username, self.smtp_password)
-                    server.send_message(msg)
-                    server.quit()
+            # 增加超时时间和重试机制
+            max_retries = 2
+            timeout = 60  # 增加超时时间到60秒
 
-            logger.info(f"邮件发送成功: {to_email} - {subject}")
-            return True, "邮件发送成功"
-            
-        except smtplib.SMTPAuthenticationError as e:
-            error_msg = f"SMTP认证失败: {str(e)}"
+            for attempt in range(max_retries):
+                try:
+                    # 如果使用IP地址，需要设置local_hostname
+                    local_hostname = None
+                    if self._is_valid_ip(self.smtp_server):
+                        # 使用IP地址时，设置local_hostname为域名
+                        local_hostname = 'smtp.exmail.qq.com'
+
+                    if self.smtp_port == 465:
+                        with smtplib.SMTP_SSL(
+                            self.smtp_server,
+                            self.smtp_port,
+                            timeout=timeout,
+                            local_hostname=local_hostname
+                        ) as server:
+                            logger.info(f"使用 SMTP_SSL 连接到 {self.smtp_server}:{self.smtp_port}")
+                            server.set_debuglevel(0)  # 关闭调试信息
+                            server.login(self.smtp_username, self.smtp_password)
+                            server.send_message(msg)
+                            server.quit()
+                    else:
+                        with smtplib.SMTP(
+                            self.smtp_server,
+                            self.smtp_port,
+                            timeout=timeout,
+                            local_hostname=local_hostname
+                        ) as server:
+                            logger.info(f"使用 SMTP 连接到 {self.smtp_server}:{self.smtp_port}")
+                            server.set_debuglevel(0)  # 关闭调试信息
+                            server.starttls()
+                            server.login(self.smtp_username, self.smtp_password)
+                            server.send_message(msg)
+                            server.quit()
+
+                    logger.info(f"邮件发送成功: {to_email} - {subject}")
+                    return True, "邮件发送成功"
+
+                except (socket.gaierror, socket.timeout) as e:
+                    error_msg = f"邮件发送失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}"
+                    logger.warning(error_msg)
+
+                    if attempt < max_retries - 1:
+                        # 等待2秒后重试
+                        time.sleep(2)
+                        continue
+                    else:
+                        # 最后一次尝试失败
+                        raise
+
+        except socket.gaierror as e:
+            error_msg = f"DNS解析失败: {self.smtp_server} - {str(e)}"
+            logger.error(error_msg)
+            logger.error("解决方案:")
+            logger.error("  1. 运行 python3 scripts/get_smtp_ip.py 获取IP地址")
+            logger.error("  2. 在 .env 中设置: MAIL_SERVER=<IP地址>")
+            return False, error_msg
+
+        except socket.timeout as e:
+            error_msg = f"连接超时: 无法连接到邮件服务器 {self.smtp_server}:{self.smtp_port} - {str(e)}"
+            logger.error(error_msg)
+            logger.error("请检查：1) 网络连接 2) 防火墙设置 3) 邮件服务器端口是否开放")
+            return False, error_msg
+
+        except ConnectionRefusedError as e:
+            error_msg = f"连接被拒绝: 邮件服务器 {self.smtp_server}:{self.smtp_port} 拒绝连接 - {str(e)}"
             logger.error(error_msg)
             return False, error_msg
-            
+
+        except smtplib.SMTPAuthenticationError as e:
+            error_msg = f"SMTP认证失败: 请检查邮箱用户名和密码/授权码 - {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+
         except smtplib.SMTPRecipientsRefused as e:
             error_msg = f"收件人被拒绝: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
-            
+
         except smtplib.SMTPServerDisconnected as e:
             error_msg = f"SMTP服务器断开连接: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
-            
+
         except Exception as e:
             error_msg = f"邮件发送失败: {str(e)}"
             logger.error(error_msg, exc_info=True)
