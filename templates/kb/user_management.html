@@ -513,6 +513,7 @@
                                                     data-company-name="{{ user.company_name or '' }}"
                                                     data-role="{{ user.role }}"
                                                     data-status="{{ user.status }}"
+                                                    data-last-login="{{ user.last_login.strftime('%Y-%m-%d %H:%M:%S') if user.last_login else '' }}"
                                                     data-created-at="{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '' }}">
                                                 <i class="fas fa-eye"></i>
                                             </button>
@@ -1103,6 +1104,7 @@
                     companyName: $(this).data('company-name'),
                     role: $(this).data('role'),
                     status: $(this).data('status'),
+                    lastLogin: $(this).data('last-login'),
                     createdAt: $(this).data('created-at')
                 };
 
@@ -1114,7 +1116,7 @@
                 $('#viewCompanyName').text(userData.companyName || '-');
                 $('#viewRole').text(userData.role === 'admin' ? '管理员' : (userData.role === 'user' ? '用户' : (userData.role === 'customer' ? '客户' : userData.role)));
                 $('#viewStatus').text(userData.status === 'active' ? '正常' : (userData.status === 'inactive' ? '禁用' : (userData.status === 'locked' ? '锁定' : userData.status)));
-                $('#viewLastLogin').text('-');
+                $('#viewLastLogin').text(userData.lastLogin || '-');
                 $('#viewCreatedAt').text(userData.createdAt || '-');
 
                 const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
@@ -1165,6 +1167,13 @@
                 if (input.attr('type') === 'password') {
                     input.attr('type', 'text');
                     icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                    // 3秒后自动隐藏密码
+                    setTimeout(() => {
+                        if (input.attr('type') === 'text') {
+                            input.attr('type', 'password');
+                            icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                        }
+                    }, 3000);
                 } else {
                     input.attr('type', 'password');
                     icon.removeClass('fa-eye-slash').addClass('fa-eye');
@@ -1178,6 +1187,13 @@
                 if (input.attr('type') === 'password') {
                     input.attr('type', 'text');
                     icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                    // 3秒后自动隐藏密码
+                    setTimeout(() => {
+                        if (input.attr('type') === 'text') {
+                            input.attr('type', 'password');
+                            icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                        }
+                    }, 3000);
                 } else {
                     input.attr('type', 'password');
                     icon.removeClass('fa-eye-slash').addClass('fa-eye');

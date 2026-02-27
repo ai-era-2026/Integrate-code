@@ -227,3 +227,72 @@ def reset_password(user_id):
     except Exception as e:
         log_exception(logger, "重置密码失败")
         return server_error_response(f'重置密码失败：{str(e)}')
+
+
+@auth_bp.route('/api/change-password', methods=['POST'])
+@login_required()
+def change_password():
+    """用户修改自己的密码"""
+    try:
+        username = session.get('username')
+        if not username:
+            return error_response('未登录', 401)
+
+        data = request.get_json()
+        old_password = data.get('old_password', '').strip()
+        new_password = data.get('new_password', '').strip()
+
+        # 验证输入
+        if not old_password or not new_password:
+            return error_response('旧密码和新密码不能为空')
+
+        if len(new_password) < 6:
+            return error_response('新密码长度至少为6位')
+
+        if old_password == new_password:
+            return error_response('新密码不能与旧密码相同')
+
+        with db_connection('kb') as conn:
+            cursor = conn.cursor()
+
+            # 获取用户信息和密码
+            cursor.execute(
+                "SELECT id, username, password_hash FROM `users` WHERE username = %s",
+                (username,)
+            )
+            user = cursor.fetchone()
+
+            if not user:
+                logger.error(f"用户 {username} 不存在")
+                return error_response('用户不存在', 404)
+
+            # 检查返回类型
+            if isinstance(user, dict):
+                user_id = user.get('id')
+                password_hash = user.get('password_hash')
+            else:
+                user_id, _, password_hash = user
+
+            # 验证旧密码
+            from werkzeug.security import check_password_hash, generate_password_hash
+
+            if not check_password_hash(password_hash, old_password):
+                logger.warning(f"用户 {username} 旧密码验证失败")
+                return error_response('旧密码错误')
+
+            # 更新新密码
+            new_password_hash = generate_password_hash(new_password)
+
+            cursor.execute(
+                "UPDATE `users` SET password_hash = %s, updated_at = NOW() WHERE id = %s",
+                (new_password_hash, user_id)
+            )
+            conn.commit()
+            cursor.close()
+
+        logger.info(f"用户 {username} 修改密码成功")
+        return success_response(message='密码修改成功')
+
+    except Exception as e:
+        log_exception(logger, "修改密码失败")
+        return server_error_response(f'修改密码失败：{str(e)}')

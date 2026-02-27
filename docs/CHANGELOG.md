@@ -8,7 +8,9 @@
 
 | 版本 | 日期 | 状态 |
 |------|------|------|
-| [v2.5.2](#v252-2026-02-26) | 2026-02-26 | 最新版本 |
+| [v2.5.4](#v254-2026-02-26) | 2026-02-26 | 最新版本 |
+| [v2.5.3](#v253-2026-02-26) | 2026-02-26 | 稳定版本 |
+| [v2.5.2](#v252-2026-02-26) | 2026-02-26 | 稳定版本 |
 | [v2.5.1](#v251-2026-02-26) | 2026-02-26 | 稳定版本 |
 | [v2.5](#v25-2026-02-26) | 2026-02-26 | 稳定版本 |
 | [v2.4](#v24-2026-02-25) | 2026-02-25 | 稳定版本 |
@@ -16,6 +18,219 @@
 | [v2.2](#v22-2026-02-13) | 2026-02-13 | 稳定版本 |
 | [v2.1](#v21-2026-02-12) | 2026-02-12 | 稳定版本 |
 | [v2.0](#v20-2026-02-10) | 2026-02-10 | 架构重构 |
+
+---
+
+## v2.5.4 (2026-02-26)
+
+### 🐛 问题修复
+
+#### 1. eventlet greendns与dnspython兼容性问题
+
+**问题描述**:
+部署到公网后，提交留言时邮件发送失败，出现以下错误：
+```
+dns.resolver.LifetimeTimeout: The resolution lifetime expired after 5.105 seconds:
+Server Do53:183.60.83.19@53 answered udp() got an unexpected keyword argument 'ignore_errors'
+```
+
+**根本原因**:
+- 不是DNS服务器配置问题
+- 不是网络连接问题（可以正常ping通）
+- **eventlet的greendns模块与dnspython版本不兼容**
+- greendns调用`dns.message.Message.udp()`时传入了不支持的参数`ignore_errors`
+
+**解决方案**:
+
+**代码优化**:
+- ✅ 添加IP地址检测功能
+- ✅ 支持直接使用IP地址连接SMTP服务器
+- ✅ 使用IP地址时自动设置local_hostname为域名
+- ✅ 在初始化时给出使用IP地址的提示
+- ✅ 增加更详细的错误提示，包含解决方案
+
+**新增工具**:
+- ✅ SMTP服务器IP地址查询脚本 `scripts/get_smtp_ip.py`
+
+**修改文件**:
+- `services/email_service.py` - 邮件发送服务
+
+**修复方案（推荐）**:
+
+1. **获取IP地址**：
+```bash
+python3 scripts/get_smtp_ip.py
+```
+
+2. **修改.env配置**：
+```bash
+# 将域名改为IP地址
+MAIL_SERVER=139.227.62.151  # 使用获取到的IP
+MAIL_PORT=465
+```
+
+3. **重启应用**：
+```bash
+systemctl restart your-service-name
+```
+
+**效果**:
+- ✅ 绕过DNS解析，直接使用IP地址连接
+- ✅ 完全避免eventlet greendns兼容性问题
+- ✅ 立即生效，无需修改依赖版本
+- ✅ 简单可靠，易于维护
+
+**技术细节**:
+
+**问题分析**：
+- eventlet通过monkey patch标准库的socket模块实现协程
+- greendns是eventlet的自定义DNS解析模块
+- greendns与dnspython的某些版本不兼容
+- 导致UDP调用时参数错误，DNS解析失败
+
+**解决原理**：
+- 使用IP地址连接时，无需进行DNS解析
+- 直接跳过greendns和dnspython的交互
+- 避免了兼容性问题
+
+**代码改进**：
+```python
+# 检测是否是IP地址
+def _is_valid_ip(self, address):
+    try:
+        socket.inet_pton(socket.AF_INET, address)
+        return True
+    except socket.error:
+        return False
+
+# 使用IP地址时设置local_hostname
+local_hostname = None
+if self._is_valid_ip(self.smtp_server):
+    local_hostname = 'smtp.exmail.qq.com'
+
+with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port,
+                     local_hostname=local_hostname) as server:
+    ...
+```
+
+**新增文档**:
+- `docs/EMAIL_EVENTLET_FIX.md` - eventlet兼容性问题详细修复指南
+
+**测试验证**:
+```bash
+# 1. 获取IP地址
+python3 scripts/get_smtp_ip.py
+
+# 2. 测试邮件发送
+python3 scripts/test_email.py
+
+# 3. 在网页上提交留言验证
+```
+
+**优势**:
+- ✅ 最简单：只需修改一个配置项
+- ✅ 最快速：立即生效
+- ✅ 最可靠：无需修改依赖版本
+- ✅ 最安全：不影响其他功能
+
+**注意事项**:
+- SMTP服务器的IP地址可能会变化，如果将来遇到问题可重新获取
+- 企业微信邮箱可能有多个IP地址，任意一个都可以使用
+- 使用IP地址不会影响SSL证书验证
+
+---
+
+## v2.5.3 (2026-02-26)
+
+### 🐛 问题修复
+
+#### 1. 邮件发送DNS解析超时问题优化
+
+**问题描述**:
+部署到公网后，提交留言时邮件发送失败，出现以下错误：
+```
+socket.gaierror: [Errno -3] Lookup timed out
+```
+
+**根本原因**:
+服务器DNS解析失败，无法将 `smtp.exmail.qq.com` 域名解析为IP地址。可能原因包括：
+1. DNS服务器配置错误
+2. 网络连接问题
+3. eventlet与smtplib兼容性问题
+
+**解决方案**:
+
+**代码优化**:
+- ✅ 增加SMTP连接超时时间：从30秒增加到60秒
+- ✅ 添加自动重试机制：失败后自动重试2次
+- ✅ 优化错误处理：区分DNS错误、超时错误、认证错误等
+- ✅ 添加配置检查：启动时检查邮件配置是否完整
+- ✅ 提供详细的错误提示：包括可能的解决方案
+
+**修改文件**:
+- `services/email_service.py` - 邮件发送服务
+
+**错误处理改进**:
+```python
+# 新增错误类型处理
+except socket.gaierror as e:
+    error_msg = f"DNS解析失败: {self.smtp_server} - {str(e)}"
+    logger.error(error_msg)
+    logger.error("请检查：1) DNS服务器配置 2) 网络连接 3) 邮件服务器地址是否正确")
+    return False, error_msg
+
+except socket.timeout as e:
+    error_msg = f"连接超时: 无法连接到邮件服务器 {self.smtp_server}:{self.smtp_port}"
+    logger.error(error_msg)
+    logger.error("请检查：1) 网络连接 2) 防火墙设置 3) 邮件服务器端口是否开放")
+    return False, error_msg
+```
+
+**新增工具**:
+- ✅ 邮件配置测试脚本 `scripts/test_email.py`
+- ✅ 邮件故障排查指南 `docs/EMAIL_TROUBLESHOOTING.md`
+- ✅ 邮件问题快速修复 `docs/EMAIL_QUICK_FIX.md`
+
+**测试脚本功能**:
+```bash
+# 运行测试脚本
+python3 scripts/test_email.py
+
+# 测试内容：
+1. DNS解析测试
+2. 网络连接测试
+3. SMTP登录测试
+4. 发送测试邮件
+```
+
+**效果**:
+- ✅ 更好的错误提示和日志记录
+- ✅ 自动重试提高发送成功率
+- ✅ 提供完整的故障排查工具
+- ✅ 降低因网络抖动导致的失败率
+
+**部署建议**:
+1. 在服务器上运行测试脚本验证配置：
+   ```bash
+   python3 scripts/test_email.py
+   ```
+
+2. 如果DNS解析失败，修改DNS配置：
+   ```bash
+   vi /etc/resolv.conf
+   # 添加公共DNS
+   nameserver 8.8.8.8
+   nameserver 114.114.114.114
+   ```
+
+3. 如果网络连接失败，检查安全组和防火墙：
+   - 确保云服务商安全组允许465端口出站
+   - 确保服务器防火墙允许465端口出站
+
+**文档**:
+- `docs/EMAIL_TROUBLESHOOTING.md` - 完整的故障排查指南
+- `docs/EMAIL_QUICK_FIX.md` - 快速修复方案
+- `scripts/test_email.py` - 邮件配置测试工具
 
 ---
 
