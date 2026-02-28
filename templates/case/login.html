@@ -296,7 +296,13 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    window.location.href = '/case/my-tickets';
+                    // 检查是否需要强制修改密码
+                    if (result.data && result.data.force_password_change) {
+                        alert('首次登录或初始密码不安全，请修改密码后再继续使用系统！');
+                        window.location.href = '/kb/auth/change-password';
+                    } else {
+                        window.location.href = '/case/my-tickets';
+                    }
                 } else {
                     alert('登录失败：' + (result.message || '用户名或密码错误'));
                 }

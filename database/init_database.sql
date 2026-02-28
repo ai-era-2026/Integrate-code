@@ -2,8 +2,8 @@
 -- 云户科技网站数据库初始化脚本
 -- 适用于 MariaDB/MySQL
 -- 创建时间: 2026-02-08
--- 最后更新: 2026-02-18 (合并 v2.1_to_v2.2 补丁)
--- 版本: v2.2 (完整版)
+-- 最后更新: 2026-02-27 (v2.0 整合完整版)
+-- 版本: v2.0 (完整版)
 -- 说明：整合官网、知识库、工单三个系统的数据库
 --       本脚本已包含所有补丁内容，可直接用于全新安装
 -- =====================================================
@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `last_login` TIMESTAMP NULL COMMENT '最后登录时间',
     `login_attempts` INT DEFAULT 0 COMMENT '登录尝试次数',
     `password_type` VARCHAR(10) DEFAULT 'werkzeug' COMMENT '密码类型：werkzeug',
+    `force_password_change` TINYINT(1) DEFAULT 0 COMMENT '是否强制修改密码：0-否, 1-是',
     `system` VARCHAR(20) DEFAULT 'unified' COMMENT '所属系统：unified-统一',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -73,7 +74,8 @@ CREATE TABLE IF NOT EXISTS `users` (
     INDEX idx_status (`status`),
     INDEX idx_role (`role`),
     INDEX idx_system (`system`),
-    INDEX idx_company_name (`company_name`)
+    INDEX idx_company_name (`company_name`),
+    INDEX idx_force_password_change (`force_password_change`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='统一用户表';
 
 -- 知识库登录日志表

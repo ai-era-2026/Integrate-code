@@ -277,6 +277,14 @@
                 passwordInput.type = 'text';
                 icon.classList.remove('fa-eye');
                 icon.classList.add('fa-eye-slash');
+                // 3秒后自动隐藏密码
+                setTimeout(() => {
+                    if (passwordInput.type === 'text') {
+                        passwordInput.type = 'password';
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    }
+                }, 3000);
             } else {
                 passwordInput.type = 'password';
                 icon.classList.remove('fa-eye-slash');
